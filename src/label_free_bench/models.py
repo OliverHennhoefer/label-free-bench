@@ -15,7 +15,7 @@ from pyod.models.ocsvm import OCSVM
 from pyod.models.pca import PCA
 
 SUPPORTED_MODELS = ("iforest", "lof", "pca", "ocsvm", "hbos")
-CANDIDATE_POOL_VERSION = "1.0"
+CANDIDATE_POOL_VERSION = "1.1"
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,12 @@ def _model_candidates(
     candidates = [CandidateSpec(detector, _default_params(detector), is_default=True)]
     if count == 1:
         return candidates
+    if detector == "pca":
+        return candidates + _pca_candidates(
+            count - 1,
+            fit_size=fit_size,
+            feature_count=feature_count,
+        )
     points = _stratified_points(detector, count - 1, dimensions=3)
     for point in points:
         candidates.append(
@@ -82,6 +88,26 @@ def _model_candidates(
             )
         )
     return candidates
+
+
+def _pca_candidates(
+    count: int, *, fit_size: int, feature_count: int
+) -> list[CandidateSpec]:
+    """Choose distinct PCA settings from a deterministic stratified grid."""
+    upper = max(1, min(feature_count, fit_size) - 1)
+    parameter_grid = [{"n_components": None, "weighted": False}]
+    parameter_grid.extend(
+        {"n_components": components, "weighted": weighted}
+        for components in range(1, upper + 1)
+        for weighted in (False, True)
+    )
+    if count > len(parameter_grid):
+        raise ValueError(
+            f"PCA needs {count} distinct non-default candidates, but only "
+            f"{len(parameter_grid)} are available for {feature_count} features"
+        )
+    indices = np.linspace(0, len(parameter_grid) - 1, num=count, dtype=int)
+    return [CandidateSpec("pca", parameter_grid[index]) for index in indices]
 
 
 def _default_params(detector: str) -> dict[str, Any]:
@@ -117,12 +143,6 @@ def _params_from_point(
         return {
             "n_neighbors": _integer(point[0], 5, upper),
             "p": 1 if point[1] < 0.5 else 2,
-        }
-    if detector == "pca":
-        upper = max(1, min(feature_count, fit_size) - 1)
-        return {
-            "n_components": _integer(point[0], 1, upper),
-            "weighted": bool(point[1] < 0.5),
         }
     if detector == "ocsvm":
         return {

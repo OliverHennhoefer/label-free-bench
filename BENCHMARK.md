@@ -14,7 +14,8 @@ scientific evaluation.
   evaluation. Development normals are capped at 500.
 - Five detector families each receive the same candidate budget. The first
   candidate is the documented PyOD default; the remainder follow the deterministic
-  candidate-pool v1.0 Latin-hypercube template.
+  candidate-pool v1.1 stratified design. PCA settings are sampled without
+  replacement from a component-count/weighting grid.
 - For weighted PCA on exactly rank-deficient normal data, zero explained-variance
   weights are floored at the smallest positive component weight. This conservative
   numerical rule prevents PyOD's division by zero without giving a null component
@@ -38,7 +39,7 @@ normalized AP regret = (oracle AP - selected AP) / (oracle AP - worst AP)
 ```
 
 It is zero when all candidates tie. This endpoint is conditional on candidate-pool
-version 1.0 and must not be interpreted as an intrinsic property of a metric.
+version 1.1 and must not be interpreted as an intrinsic property of a metric.
 Raw regret, supervised percentile, lift and efficiency relative to expected random
 candidate selection, default-detector baselines, and nested candidate budgets are
 reported alongside it.

@@ -12,8 +12,9 @@ development data only. Hidden labels evaluate the selection afterward.
 2. Use the fixed seven-dataset development suite for human or agent iteration.
 3. Stratify each complete dataset 50:50, discard development anomalies, cap the
    remaining normal pool at 500, and fit preprocessing on development data only.
-4. Evaluate the balanced candidate-pool v1.0 design: five PyOD families, equal
-   budgets, deterministic Latin-hypercube templates, and default anchors.
+4. Evaluate the balanced candidate-pool v1.1 design: five PyOD families, equal
+   budgets, deterministic stratified templates, unique PCA settings, and default
+   anchors.
 5. Freeze normal-only validation features, scores, repeated bootstrap-fit scores,
    reference scores, probabilities, and support information per dataset and seed.
 6. Evaluate every metric against exactly that evidence. Reuse it for new metrics;

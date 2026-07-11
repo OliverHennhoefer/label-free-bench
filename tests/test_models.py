@@ -73,3 +73,14 @@ def test_candidate_pool_is_balanced_deterministic_and_default_anchored() -> None
     }
     assert first[0].params["max_samples"] == "auto"
     assert first[1].params == {"n_neighbors": 20, "p": 2}
+
+
+def test_full_pca_budget_contains_no_duplicate_hyperparameters() -> None:
+    candidates = candidate_specs(
+        ("pca",), trials=12, fit_size=375, feature_count=6
+    )
+
+    identities = {
+        tuple(sorted(candidate.params.items())) for candidate in candidates
+    }
+    assert len(identities) == len(candidates) == 12

@@ -2,7 +2,8 @@
 
 ## 1.0.0
 
-- Added the versioned balanced candidate pool with PyOD default anchors.
+- Added balanced candidate-pool v1.1 with PyOD default anchors, stratified
+  hyperparameters, and duplicate-free PCA settings.
 - Added checksummed ADBench acquisition, dataset/split/evidence identity, and
   exact environment provenance.
 - Added frozen normal-only evidence and no-refit custom metric evaluation.

@@ -80,7 +80,7 @@ def test_smoke_run_is_reproducible_and_writes_audit_tables(tmp_path: Path) -> No
     assert (first.output_dir / "artifacts" / "evidence").is_dir()
     assert (first.output_dir / "artifacts" / "splits").is_dir()
     parsed_manifest = json.loads(manifest)
-    assert parsed_manifest["candidate_pool_version"] == "1.0"
+    assert parsed_manifest["candidate_pool_version"] == "1.1"
     assert parsed_manifest["dataset_hashes"]["synthetic"]
     assert parsed_manifest["splits"]["synthetic:seed=7"]["split_hash"]
     assert parsed_manifest["environment"]["packages"]["labelfree"]
