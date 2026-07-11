@@ -149,4 +149,5 @@ uv lock --check
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the metric submission contract and
-[PLAN.md](PLAN.md) for project rationale.
+[PLAN.md](PLAN.md) for project rationale. The versioned baseline tables are in
+[REFERENCE_RESULTS.md](REFERENCE_RESULTS.md).

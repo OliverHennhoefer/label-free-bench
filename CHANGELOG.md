@@ -14,3 +14,4 @@
   inference semantics.
 - Added a single ranked `results.csv`, complete secondary confidence intervals,
   CI, dataset documentation, and contribution guidance.
+- Published the complete v1 development and confirmation reference tables.
