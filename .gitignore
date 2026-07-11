@@ -224,3 +224,4 @@ results/
 # Local autonomous-research instructions and cumulative experiment protocol
 AGENTS.md
 EXPERIMENTS.md
+/.codex
