@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# label-free-bench local data and run artifacts
+data/
+results/
+*.sqlite3
+
+# Local autonomous-research instructions and cumulative experiment protocol
+AGENTS.md
+EXPERIMENTS.md

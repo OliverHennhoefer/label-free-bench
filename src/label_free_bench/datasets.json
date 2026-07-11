@@ -1,0 +1,17 @@
+[
+  {"name":"annthyroid","file":"2_annthyroid.npz","sha256":"e738f7c58a8740d2c4aac4c71ff49ce5e1d1aa16f44178135fc9c09df05fad1b","category":"healthcare","suite":"development"},
+  {"name":"cardio","file":"6_cardio.npz","sha256":"bc5009bde6930b4d298b594f31b34485a9a17210cff0e8fb00a8c3068b885a2d","category":"healthcare","suite":"confirmation"},
+  {"name":"fault","file":"12_fault.npz","sha256":"ec27301f9a4cf7c5d8b22c360cf37ddb043b7fb062465723dfd8b34e2771e5dd","category":"physical","suite":"confirmation"},
+  {"name":"landsat","file":"19_landsat.npz","sha256":"ba17e2158c07469597b89db49d3982c874c6b713ff6670721ddc88969da77987","category":"astronautics","suite":"development"},
+  {"name":"letter","file":"20_letter.npz","sha256":"f986d3da80cf1fa2aea83a5ebe73b7d4800e0d4c01fdd1ae074b58d20f10d039","category":"image","suite":"development"},
+  {"name":"mammography","file":"23_mammography.npz","sha256":"a0308ac9712d78321073b1c2dc98dc37665c0f35c1cc33019416fe8f8d7de7ea","category":"healthcare","suite":"development"},
+  {"name":"musk","file":"25_musk.npz","sha256":"2ed3f4392197b76a1e59116ff880c7720a4b026cf4842073a53b56fdea265017","category":"chemistry","suite":"confirmation"},
+  {"name":"optdigits","file":"26_optdigits.npz","sha256":"60de17a375a278ba220a7849727d998aa02b5e2f9fd17732a004bba28de4656e","category":"image","suite":"development"},
+  {"name":"PageBlocks","file":"27_PageBlocks.npz","sha256":"10a9b4d5bb5d3b9083caab4c4062f665610eada703c3d927bf7c34b1f2d0d223","category":"document","suite":"confirmation"},
+  {"name":"pendigits","file":"28_pendigits.npz","sha256":"c4936b89dcdad59d303020e492f763a0f54170080d787c77497609acbb9c2d79","category":"image","suite":"confirmation"},
+  {"name":"satellite","file":"30_satellite.npz","sha256":"1f048f5686f1b8c16a227fdfa3c81a62cd9a92715714a6b24c69b1c5ad96b46e","category":"astronautics","suite":"confirmation"},
+  {"name":"satimage-2","file":"31_satimage-2.npz","sha256":"1b056e357f801b8b20c3f380a30224a3c4088d7ed764ec5a24828dc9b1918d6f","category":"astronautics","suite":"confirmation"},
+  {"name":"shuttle","file":"32_shuttle.npz","sha256":"26900b0f6be45d9ddb7a402c9b2f956ceda42d23a8ca4cf4406b8bc1352823d1","category":"astronautics","suite":"development"},
+  {"name":"speech","file":"36_speech.npz","sha256":"aa647e9e3af9b021fc991bdf091e02ec8724fa8e9d3e8edf5394a8e6fe840190","category":"linguistics","suite":"confirmation"},
+  {"name":"vowels","file":"40_vowels.npz","sha256":"4bfc4244d1c882773bbbc50d4a5db5e52276e53506e46b2d45e02d074cfcb1b6","category":"linguistics","suite":"development"}
+]
