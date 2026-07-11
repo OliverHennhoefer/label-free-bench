@@ -192,3 +192,28 @@ def build_detector(spec: CandidateSpec, *, seed: int, detector_contamination: fl
     if spec.detector == "hbos":
         return HBOS(**spec.params, contamination=detector_contamination)
     raise ValueError(f"unknown detector {spec.detector!r}")
+
+
+def fit_detector(detector, X: np.ndarray):
+    """Fit a detector and conservatively stabilize rank-deficient PyOD PCA."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        detector.fit(X)
+    scores = np.asarray(detector.decision_scores_, dtype=float)
+    if isinstance(detector, PCA) and not np.isfinite(scores).all():
+        weights = np.asarray(detector.selected_w_components_, dtype=float)
+        positive = weights[np.isfinite(weights) & (weights > 0)]
+        if positive.size == 0:
+            raise ValueError("PCA produced no positive component weights")
+        # PyOD's weighted PCA divides by explained-variance ratios. Exact
+        # rank deficiency therefore yields infinities. A zero component is
+        # conservatively assigned the smallest positive weight instead of
+        # receiving unbounded influence.
+        detector.selected_w_components_ = np.where(
+            np.isfinite(weights) & (weights > 0), weights, positive.min()
+        )
+        detector.decision_scores_ = detector.decision_function(X)
+        detector._process_decision_scores()
+        scores = np.asarray(detector.decision_scores_, dtype=float)
+    if not np.isfinite(scores).all():
+        raise ValueError("detector produced non-finite training scores")
+    return detector

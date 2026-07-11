@@ -15,6 +15,10 @@ scientific evaluation.
 - Five detector families each receive the same candidate budget. The first
   candidate is the documented PyOD default; the remainder follow the deterministic
   candidate-pool v1.0 Latin-hypercube template.
+- For weighted PCA on exactly rank-deficient normal data, zero explained-variance
+  weights are floored at the smallest positive component weight. This conservative
+  numerical rule prevents PyOD's division by zero without giving a null component
+  unbounded influence.
 - The first occurrence of each detector is a default anchor. Candidate budgets
   are nested and sensitivity results are published.
 - Metrics see only frozen `MetricInput` arrays derived from development normals.

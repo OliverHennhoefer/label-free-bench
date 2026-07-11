@@ -41,6 +41,7 @@ from label_free_bench.models import (
     CandidateSpec,
     build_detector,
     candidate_specs,
+    fit_detector,
 )
 
 RESULT_SCHEMA_VERSION = 5
@@ -1338,9 +1339,11 @@ def _evaluate_candidates(
             seed=candidate_seed,
             detector_contamination=detector_contamination,
         )
-        detector.fit(fit_scaled)
-        validation_scores = detector.decision_function(validation_scaled)
-        reference_scores = detector.decision_function(reference)
+        fit_detector(detector, fit_scaled)
+        validation_scores = _finite_scores(
+            detector.decision_function(validation_scaled), spec
+        )
+        reference_scores = _finite_scores(detector.decision_function(reference), spec)
         outlier_probabilities = detector.predict_proba(validation_scaled)[:, 1]
         repeated_scores = [validation_scores]
         for repeat in range(1, stability_repeats):
@@ -1353,9 +1356,11 @@ def _evaluate_candidates(
                 seed=candidate_seed + repeat,
                 detector_contamination=detector_contamination,
             )
-            repeated_detector.fit(fit_scaled[bootstrap_indices])
+            fit_detector(repeated_detector, fit_scaled[bootstrap_indices])
             repeated_scores.append(
-                repeated_detector.decision_function(validation_scaled)
+                _finite_scores(
+                    repeated_detector.decision_function(validation_scaled), spec
+                )
             )
         fit_seconds = time.perf_counter() - started
 
@@ -1364,8 +1369,10 @@ def _evaluate_candidates(
             seed=candidate_seed,
             detector_contamination=detector_contamination,
         )
-        final_detector.fit(development_scaled)
-        test_scores = final_detector.decision_function(test_scaled)
+        fit_detector(final_detector, development_scaled)
+        test_scores = _finite_scores(
+            final_detector.decision_function(test_scaled), spec
+        )
         (
             test_average_precision,
             test_roc_auc,
@@ -1411,6 +1418,16 @@ def _evaluate_candidates(
     )
     metric_seconds = _apply_metrics(rows, evidence, metrics)
     return rows, evidence, metric_seconds
+
+
+def _finite_scores(scores: np.ndarray, spec: CandidateSpec) -> np.ndarray:
+    values = np.asarray(scores, dtype=float).reshape(-1)
+    if not np.isfinite(values).all():
+        raise ValueError(
+            f"{spec.detector} candidate produced non-finite decision scores: "
+            f"{json.dumps(spec.params, sort_keys=True)}"
+        )
+    return values
 
 
 def _apply_metrics(

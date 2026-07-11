@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from label_free_bench.models import CandidateSpec, build_detector, candidate_specs
+from label_free_bench.models import (
+    CandidateSpec,
+    build_detector,
+    candidate_specs,
+    fit_detector,
+)
 
 
 @pytest.mark.parametrize(
@@ -35,6 +40,23 @@ def test_publication_detector_supports_required_score_api(
 
     assert scores.shape == (20,)
     assert probabilities.shape == (20,)
+    assert np.isfinite(scores).all()
+    assert np.isfinite(probabilities).all()
+
+
+def test_weighted_pca_default_is_finite_on_rank_deficient_data() -> None:
+    rng = np.random.default_rng(7)
+    base = rng.normal(size=(80, 3))
+    rank_deficient = np.column_stack((base, base[:, 0], np.ones(len(base))))
+    spec = candidate_specs(
+        ("pca",), trials=1, fit_size=len(base), feature_count=5
+    )[0]
+    detector = build_detector(spec, seed=7, detector_contamination=0.1)
+
+    fit_detector(detector, rank_deficient)
+    scores = detector.decision_function(rank_deficient)
+    probabilities = detector.predict_proba(rank_deficient)[:, 1]
+
     assert np.isfinite(scores).all()
     assert np.isfinite(probabilities).all()
 
