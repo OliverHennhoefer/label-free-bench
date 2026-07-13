@@ -1,0 +1,20 @@
+datasets:
+  - name: annthyroid
+    suite: development
+  - name: landsat
+    suite: development
+  - name: letter
+    suite: development
+  - name: mammography
+    suite: development
+  - name: optdigits
+    suite: development
+  - name: shuttle
+    suite: development
+  - name: vowels
+    suite: development
+seeds: [1, 2, 3]
+models: [iforest, lof, pca, ocsvm, hbos]
+metrics:
+  - label_free_bench.metrics:REFERENCE_METRICS
+trials: 30
