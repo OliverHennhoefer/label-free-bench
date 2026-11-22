@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+title: "Label-Free Laboratory: normal-only anomaly-detector selection research"
+message: Please cite this repository, labelfree and ADBench when using the benchmark or its research records.
+type: software
+authors:
+  - family-names: Hennhoefer
+    given-names: Oliver
+license: MIT
+repository-code: https://github.com/OliverHennhoefer/label-free-bench
+references:
+  - type: software
+    title: labelfree
+    version: 1.0.0
+    repository-code: https://github.com/OliverHennhoefer/label-free

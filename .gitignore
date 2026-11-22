@@ -1,0 +1,17 @@
+# Benchmark caches: raw ADBench files, score banks, grading keys, submissions
+.bench-runs/
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Editors and local agent settings
+.idea/
+.vscode/
+.claude/
+CLAUDE.md
+.DS_Store

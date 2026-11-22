@@ -8,7 +8,6 @@ from benchmarks import prepare
 from benchmarks.grade import evaluate_choice, grade, group_means
 from benchmarks.protocol import (
     DEFAULT,
-    ENDPOINTS,
     TARGETS,
     VERSION,
     digest,
@@ -45,13 +44,14 @@ def test_manifest_keeps_variants_and_public_examples_together():
 def test_private_targets_and_threshold_ties():
     labels = np.array([0, 0, 0, 1])
     scores = np.array([[1, 1, 1, 1], [0, 0, 1, 1]])
-    values = prepare.oracle(labels, scores)
+    values = prepare.oracle(labels, scores, f1_thresholds=[0.5, 0.5])
     assert values["ap"] == [0.25, 0.5]
     assert values["auroc"] == pytest.approx([0.5, 5 / 6])
     assert values["precision_at_budget"] == [0.25, 0.5]
     assert values["pr_auc_trapezoid"] != values["ap"]
     np.testing.assert_allclose(top_membership(scores[1], 1), [0, 0, 0.5, 0.5])
-    assert prepare.oracle(np.zeros(4), scores) is None
+    assert values["f1"] == [0.4, 2 / 3]
+    assert prepare.oracle(np.zeros(4), scores, f1_thresholds=[0, 0]) is None
 
 
 def test_hierarchical_average():
@@ -96,7 +96,9 @@ def bank(tmp_path):
         "seed": 0,
         "n": 4,
         "features": 2,
-        "outcomes": prepare.oracle(np.array([0, 0, 0, 1]), scores),
+        "outcomes": prepare.oracle(
+            np.array([0, 0, 0, 1]), scores, f1_thresholds=[0.5, 0.5]
+        ),
     }
     write_json(
         private / "truth.json",
@@ -146,7 +148,6 @@ def test_freeze_grade_and_failures(tmp_path, bank):
     )
     grade(args)
     report = read_json(args.out / "report.json")
-    assert report["track"] == "transductive"  # Older private keys predate track names.
     assert report["target"] == "ap"
     assert report["supervised_winners"] == {"task": [DEFAULT]}
     flat, bad, abstain = (
@@ -160,8 +161,8 @@ def test_freeze_grade_and_failures(tmp_path, bank):
     assert report["summary"][flat]["delta_ap_ci95"] is None
     assert report["by_task"][flat][0]["selected"] == [DEFAULT, "other"]
     assert report["summary"][flat]["ap_best_pick_rate"] == 0.5
-    with pytest.raises(ValueError, match="Target 'f1' is unavailable"):
-        grade(Namespace(**vars(args), target="f1"))
+    with pytest.raises(ValueError, match="Target 'brier' is unavailable"):
+        grade(Namespace(**vars(args), target="brier"))
 
     key = read_json(private / "truth.json")
     key["split"] = "test"
@@ -240,20 +241,6 @@ def test_pinned_download_rejects_wrong_blob(tmp_path, monkeypatch):
     assert list(raw.iterdir()) == []
 
 
-def test_prepare_cli_defaults_to_normal_only(monkeypatch):
-    import sys
-
-    from benchmarks.__main__ import main
-
-    received = []
-    monkeypatch.setattr(prepare, "prepare", lambda args: received.append(args.track))
-    monkeypatch.setattr(
-        sys, "argv", ["benchmarks", "prepare", "--raw-dir", "raw", "--out", "bank"]
-    )
-    main()
-    assert received == ["normal-only"]
-
-
 def test_changing_private_measurements_changes_only_the_grades(monkeypatch):
     class FirstFeature:
         def fit(self, X):
@@ -279,19 +266,19 @@ def test_changing_private_measurements_changes_only_the_grades(monkeypatch):
         10  # Even private normal observations must be invisible at selection.
     )
     changed[y == 1] = -100
-    public, labels, hidden = prepare.normal_only_task(X, y, 6, True)
-    public_again, labels_again, hidden_again = prepare.normal_only_task(
-        changed, y, 6, True
-    )
+    public, labels, hidden = prepare.build_task(X, y, 6, True)
+    public_again, labels_again, hidden_again = prepare.build_task(changed, y, 6, True)
     assert public["X"].shape == (len(selection), 3)
     for key in public:
         np.testing.assert_array_equal(public[key], public_again[key])
-    assert prepare.oracle(labels, hidden)["auroc"] == [1.0]
-    assert prepare.oracle(labels_again, hidden_again)["auroc"] == [0.0]
+    cutoff = public["scores"].max(axis=1)
+    assert prepare.oracle(labels, hidden, f1_thresholds=cutoff)["auroc"] == [1.0]
+    assert prepare.oracle(labels_again, hidden_again, f1_thresholds=cutoff)[
+        "auroc"
+    ] == [0.0]
 
 
-@pytest.mark.parametrize("track", ["normal-only", "transductive"])
-def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
+def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch):
     pytest.importorskip("pyod")
     import hashlib
 
@@ -320,9 +307,8 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
         raw_dir=tmp_path,
         datasets=["fixture"],
         split="dev",
-        track=track,
         seeds=[5],
-        max_samples=256 if track == "normal-only" else 128,
+        max_samples=256,
         extra_views=True,
         download=False,
         out=tmp_path / "prepared",
@@ -334,44 +320,39 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
     batch = read_batch(public, key, sha, bank["families"])
     truth = read_json(args.out / "private" / "truth.json")
     task = truth["tasks"][key]
-    assert bank["track"] == truth["track"] == track
+    assert bank["labelfree"]["version"] and len(bank["labelfree"]["sha256"]) == 64
     expected_views = {
+        "train",
         "validation",
         "gaussian",
         "refits",
         "projected_real",
         "uniform",
     }
-    if track == "normal-only":
-        expected_views.add("train")
-        sampled = np.random.default_rng(5).permutation(len(y))[: args.max_samples]
-        fit, select, test = prepare.normal_partitions(y[sampled])
-        tr, sel, hidden = prepare.scale(
-            X[sampled[fit]], X[sampled[select]], X[sampled[test]]
-        )
-        np.testing.assert_allclose(batch.views["train"], tr)
-        np.testing.assert_allclose(batch.X, sel)
-        assert (task["n_fit"], task["n_select"], task["n"]) == (
-            len(tr),
-            len(sel),
-            len(hidden),
-        )
-        models = [m.fit(tr) for m in prepare.portfolio(5).values()]
-        np.testing.assert_allclose(
-            batch.scores, [m.decision_function(sel) for m in models]
-        )
-        ordered_normals = np.sort(batch.scores, axis=1)
-        thresholds = ordered_normals[:, len(sel) - 1 - len(sel) // 20]
-        np.testing.assert_array_equal(task["f1_thresholds"], thresholds)
-        expected = prepare.oracle(
-            y[sampled[test]],
-            [m.decision_function(hidden) for m in models],
-            f1_thresholds=thresholds,
-        )
-        for name in expected:
-            np.testing.assert_allclose(task["outcomes"][name], expected[name])
-    else:
-        assert batch.X.shape == (128, 5)
+    sampled = np.random.default_rng(5).permutation(len(y))[: args.max_samples]
+    fit, select, test = prepare.normal_partitions(y[sampled])
+    tr, sel, hidden = prepare.scale(
+        X[sampled[fit]], X[sampled[select]], X[sampled[test]]
+    )
+    np.testing.assert_allclose(batch.views["train"], tr)
+    np.testing.assert_allclose(batch.X, sel)
+    assert (task["n_fit"], task["n_select"], task["n"]) == (
+        len(tr),
+        len(sel),
+        len(hidden),
+    )
+    models = [m.fit(tr) for m in prepare.portfolio(5).values()]
+    np.testing.assert_allclose(batch.scores, [m.decision_function(sel) for m in models])
+    ordered_normals = np.sort(batch.scores, axis=1)
+    thresholds = ordered_normals[:, len(sel) - 1 - len(sel) // 20]
+    np.testing.assert_array_equal(task["f1_thresholds"], thresholds)
+    expected = prepare.oracle(
+        y[sampled[test]],
+        [m.decision_function(hidden) for m in models],
+        f1_thresholds=thresholds,
+    )
+    for name in expected:
+        np.testing.assert_allclose(task["outcomes"][name], expected[name])
     assert set(batch.views) == expected_views
     assert set(np.load(public / f"{key}.npz").files) == {"X", "scores", *batch.views}
     assert "fixture" not in (public / "bank.json").read_text()
@@ -387,15 +368,12 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
         )
     )
     submission = read_json(trial / "submission.json")
-    assert submission["track"] == track
     outcomes = submission["tasks"][key]
     assert all(r["status"] == "ok" for r in outcomes.values()), outcomes
     assert len(outcomes) >= 28
-    assert set(task["outcomes"]) == set(
-        TARGETS if track == "normal-only" else ENDPOINTS
-    )
+    assert set(task["outcomes"]) == set(TARGETS)
     out = tmp_path / "grade"
-    target = "f1" if track == "normal-only" else "auroc"
+    target = "f1"
     grade(
         Namespace(
             truth=args.out / "private",
@@ -406,7 +384,6 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
         )
     )
     report = read_json(out / "report.json")
-    assert report["track"] == track
     assert report["target"] == target
     values = task["outcomes"][target]
     assert report["supervised_winners"][key] == [
@@ -418,5 +395,4 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch, track):
     )
     assert report["summary"]["iforest_default"][f"delta_{target}"] == 0
     assert report["summary"]["iforest_default"]["ap"] == task["outcomes"]["ap"][0]
-    if track == "normal-only":
-        assert report["by_task"]["iforest_default"][0]["n_fit"] == task["n_fit"]
+    assert report["by_task"]["iforest_default"][0]["n_fit"] == task["n_fit"]

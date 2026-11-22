@@ -29,6 +29,7 @@ from .protocol import (
     VERSION,
     digest,
     fingerprint,
+    library_identity,
     new_directory,
     top_membership,
     write_json,
@@ -106,17 +107,6 @@ def scale(train, *others):
     ]
 
 
-def extra_views(raw, seed):
-    """Shared unlabeled holdout, Gaussian probes, uniform probes and five refits."""
-    rng = np.random.default_rng(seed)
-    order = rng.permutation(len(raw))
-    cut = int(len(raw) * 0.7)
-    train, hold = scale(raw[order[:cut]], raw[order[cut:]])
-    models = [m.fit(train) for m in portfolio(seed).values()]
-    scores = np.stack([m.decision_function(hold) for m in models])
-    return holdout_views(train, hold, models, scores, rng, seed)
-
-
 def holdout_views(train, hold, models, scores, rng, seed):
     """Optional evidence computed exclusively from the fitting and selection sets."""
     gaussian = rng.normal(train.mean(axis=0), train.std(axis=0), size=hold.shape)
@@ -132,7 +122,7 @@ def holdout_views(train, hold, models, scores, rng, seed):
     view["refits"] = np.stack(refits, axis=1)
 
     # Scale each projected support to a unit box so volumes are comparable.
-    # Box construction uses the unlabeled batch. Fits still use only train.
+    # The box spans the fitting and selection normals. Fits use only train.
     real, uniform = [], []
     for _ in range(3 if train.shape[1] > 5 else 1):
         cols = rng.choice(train.shape[1], min(5, train.shape[1]), replace=False)
@@ -150,7 +140,7 @@ def holdout_views(train, hold, models, scores, rng, seed):
     return view
 
 
-def oracle(y, scores, *, f1_thresholds=None):
+def oracle(y, scores, *, f1_thresholds):
     if np.unique(y).size != 2:
         return None
     columns = {name: [] for name in ENDPOINTS}
@@ -168,11 +158,10 @@ def oracle(y, scores, *, f1_thresholds=None):
             strict=True,
         ):
             columns[name].append(float(value))
-    if f1_thresholds is not None:
-        columns["f1"] = [
-            float(f1_score(y, np.asarray(s) > t, zero_division=0))
-            for s, t in zip(scores, f1_thresholds, strict=True)
-        ]
+    columns["f1"] = [
+        float(f1_score(y, np.asarray(s) > t, zero_division=0))
+        for s, t in zip(scores, f1_thresholds, strict=True)
+    ]
     return columns
 
 
@@ -188,7 +177,7 @@ def normal_partitions(labels):
     return clean[:cut], clean[cut:], test
 
 
-def normal_only_task(batch, labels, seed, with_views):
+def build_task(batch, labels, seed, with_views):
     fit, select, test = normal_partitions(labels)
     smallest_fit = int(0.8 * len(fit)) if with_views else len(fit)
     if smallest_fit <= 25:
@@ -210,15 +199,7 @@ def normal_only_task(batch, labels, seed, with_views):
     return public, labels[test], hidden_scores
 
 
-def transductive_task(batch, labels, seed, with_views):
-    (X,) = scale(batch)
-    scores = np.stack([m.fit(X).decision_scores_ for m in portfolio(seed).values()])
-    views = extra_views(batch, seed) if with_views else {}
-    return {"X": X, "scores": scores, **views}, labels, scores
-
-
 def prepare(args):
-    track = getattr(args, "track", "normal-only")
     if (
         args.max_samples < 80
         or len(set(args.seeds)) != len(args.seeds)
@@ -232,7 +213,6 @@ def prepare(args):
         names = list(portfolio(args.seeds[0]))
         bank = {
             "version": VERSION,
-            "track": track,
             "split": args.split,
             "revision": REVISION,
             "max_samples": args.max_samples,
@@ -245,16 +225,13 @@ def prepare(args):
                 pkg: version(pkg)
                 for pkg in ("pyod", "scikit-learn", "scipy", "numpy", "numba")
             },
+            "labelfree": library_identity(),
             "python": platform.python_version(),
             "prepare_sha256": digest(Path(__file__)),
             "protocol_sha256": digest(Path(protocol.__file__)),
             "manifest_sha256": digest(MANIFEST),
             "tasks": {},
         }
-        build_task = {
-            "normal-only": normal_only_task,
-            "transductive": transductive_task,
-        }[track]
         truth = {}
         for row in datasets(args.split, args.datasets):
             path = verified_file(args.raw_dir, row, args.download)
@@ -285,11 +262,9 @@ def prepare(args):
                 np.savez_compressed(output, **arrays)
                 bank["tasks"][key] = digest(output)
                 # Calibrate each detector's alert cutoff on known normals alone.
-                f1_thresholds = None
-                if track == "normal-only":
-                    f1_thresholds = np.quantile(
-                        arrays["scores"], 1 - TAIL, axis=1, method="inverted_cdf"
-                    )
+                f1_thresholds = np.quantile(
+                    arrays["scores"], 1 - TAIL, axis=1, method="inverted_cdf"
+                )
                 truth[key] = {
                     "dataset": row["dataset"],
                     "source": row["source"],
@@ -300,13 +275,10 @@ def prepare(args):
                     "outcomes": oracle(
                         test_labels, test_scores, f1_thresholds=f1_thresholds
                     ),
+                    "n_fit": len(arrays["train"]),
+                    "n_select": len(arrays["X"]),
+                    "f1_thresholds": f1_thresholds.tolist(),
                 }
-                if track == "normal-only":
-                    truth[key].update(
-                        n_fit=len(arrays["train"]),
-                        n_select=len(arrays["X"]),
-                        f1_thresholds=f1_thresholds.tolist(),
-                    )
                 print(f"Prepared {row['dataset']} seed {seed}", flush=True)
         bank_id = fingerprint(bank)
         write_json(public / "bank.json", {**bank, "bank_id": bank_id})
@@ -314,7 +286,6 @@ def prepare(args):
             private / "truth.json",
             {
                 "bank_id": bank_id,
-                "track": track,
                 "candidates": names,
                 "split": args.split,
                 "tasks": truth,

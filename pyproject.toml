@@ -1,0 +1,9 @@
+# Tool configuration only. The lab is not a distributed package: install
+# requirements.txt and run commands from the repository root.
+[tool.pytest.ini_options]
+testpaths = ["benchmarks/tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = [".bench-runs"]

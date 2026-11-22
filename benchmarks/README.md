@@ -1,6 +1,6 @@
 # Batch model-selection benchmark
 
-The experiment asks how closely a metric using only **known-normal examples** can reproduce the detector choice a supervised evaluation would make. Name a target such as ROC AUC, PR AUC or F1 before grading. Compare the hidden test score of the chosen detector with the best test score among the same fitted candidates. This difference is the **selection gap** (regret). If the best ROC AUC is 0.94 and the chosen detector achieves 0.93, the gap is 0.01. The metric used to choose can have any numerical scale. The harness and its data live outside the public package.
+The experiment asks how closely a metric using only **known-normal examples** can reproduce the detector choice a supervised evaluation would make. Name a target such as ROC AUC, PR AUC or F1 before grading. Compare the hidden test score of the chosen detector with the best test score among the same fitted candidates. This difference is the **selection gap** (regret). If the best ROC AUC is 0.94 and the chosen detector achieves 0.93, the gap is 0.01. The metric used to choose can have any numerical scale. The metrics come from [`labelfree`](https://github.com/OliverHennhoefer/label-free), pinned to an exact commit in `requirements.txt`.
 
 ## Normal-only protocol
 
@@ -8,19 +8,19 @@ The experiment asks how closely a metric using only **known-normal examples** ca
 2. Of the remaining normal rows, two thirds (rounded down) fit the imputer, feature mask, scaler and detectors. The rest are separate normal examples for choosing a detector. These groups and the private group have disjoint row indices. The public bank contains the fitting normals, the selection normals and the fitted detectors' scores on the selection normals.
 3. The selector freezes its ranking from that public bank. The private grader evaluates the same fitted detectors on the reserved mix of normal and outlier rows. The trusted preparer may cache these outcomes ahead of time. The researcher receives the permitted grade after submitting the choice. Public data contains neither private rows nor their scores or labels. A private sample with only one class is ungradable.
 
-This is `prepare`'s default `--track normal-only`. The basic bank contains only real, normal observations. `--extra-views` is an explicit comparison condition for baselines that use normal-data refits and artificial Gaussian or uniform reference points. All those views are constructed solely from the fitting and selection normals. Record this option when interpreting a method that assumes a type of artificial anomaly. The old mixed-data experiment is available as `--track transductive`.
+The basic bank contains only real, normal observations. `--extra-views` is an explicit comparison condition for baselines that use normal-data refits and artificial Gaussian or uniform reference points. All those views are constructed solely from the fitting and selection normals. Record this option when interpreting a method that assumes a type of artificial anomaly.
 
-For agent-led research, start with the [research brief and handoff](../research/README.md). It includes a completed experiment with predictions recorded before grading and a counterexample for an existing mass–volume target.
+For agent-led research, start with the [research memory](../research/README.md).
 
 ## Try a development iteration
 
 Run these commands from the repository root with Python 3.12. The first download uses the official ADBench repository. Subsequent runs reuse local files.
 
 ```sh
-python -m pip install -e . -r benchmarks/requirements.txt
+python -m pip install -r requirements.txt
 
 run=.bench-runs/normal-only
-python -m benchmarks prepare --track normal-only --download --raw-dir .bench-runs/raw \
+python -m benchmarks prepare --download --raw-dir .bench-runs/raw \
   --split dev --datasets 4_breastw 6_cardio 18_Ionosphere 29_Pima \
   --seeds 0 1 --out "$run/dev"
 
@@ -28,7 +28,7 @@ python -m benchmarks run --bank "$run/dev/public" \
   --ireos-rows 24 --out "$run/baselines"
 
 python -m benchmarks run --bank "$run/dev/public" \
-  --selector benchmarks/hypotheses/density_agreement.py \
+  --selector benchmarks/example_selector.py \
   --out "$run/trial-001"
 
 python -m benchmarks grade --truth "$run/dev/private" \
@@ -49,30 +49,22 @@ A standalone Python module exports `select(batch)`. Return one value per candida
 | `batch.families` | One detector family per candidate, in matrix order |
 | `batch.views` | `train` contains the transformed fitting normals. Optional additional views are described below. |
 
-The included hypothesis gives each other detector family one vote on a candidate's top 5% of alerts. It subtracts the overlap expected if the two lists selected points independently within the same local-density quartiles. This tests whether agreement about *which rows* are unusual adds information beyond a shared preference for sparse regions. Fractional membership handles boundary ties. The example needs only the basic bank. [Example implementation](hypotheses/density_agreement.py)
-
-For an ablation, replace the density bins with a single bin and rerun with a new output path. A useful experiment record contains the predicted effect, reference selector, bank ID, source hash, paired AP difference, failure count and the observation that motivates the next change. Development reports include per-task picks, oracle AP, sample and feature counts, and error reasons. These let an agent inspect a failed hypothesis without retraining the portfolio.
+The [example selector](example_selector.py) reproduces the library's model-centrality baseline to show the contract. It is an interface example, not a hypothesis. Development reports include per-task picks, oracle scores, sample and feature counts, and error reasons. These let an agent inspect a failed hypothesis without refitting the portfolio.
 
 ## Frozen protocol
 
-- **Data.** The manifest lists all 47 ADBench Classical files and their Git blob hashes at one revision. It assigns 25 files to development, eight to validation and 14 to test. Related variants stay together, including the Cardiotocography, thyroid, Wisconsin breast and Landsat groups. The six datasets already used by the library's example notebooks are in development. Treat these source groups as an initial provenance audit. [Manifest](adbench.csv) · [Pinned ADBench collection](https://github.com/Minqi824/ADBench/tree/3dac8221081e190f157d78e93bfa8867f90d0965/adbench/datasets/Classical)
-- **Unit of evaluation.** One dataset and seed define one task. The `normal-only` track follows the three-way split above. The fixed 5% alert budget ranks even a completely normal selection set. It does not estimate the prevalence of anomalies in that set.
+- **Data.** The manifest lists all 47 ADBench Classical files and their Git blob hashes at one revision. It assigns 25 files to development, eight to validation and 14 to test. Related variants stay together, including the Cardiotocography, thyroid, Wisconsin breast and Landsat groups. The six datasets already used by the `labelfree` example notebooks are in development. Treat these source groups as an initial provenance audit. [Manifest](adbench.csv) · [Pinned ADBench collection](https://github.com/Minqi824/ADBench/tree/3dac8221081e190f157d78e93bfa8867f90d0965/adbench/datasets/Classical)
+- **Unit of evaluation.** One dataset and seed define one task, split three ways as above. The fixed 5% alert budget ranks even a completely normal selection set. It does not estimate the prevalence of anomalies in that set.
 - **Candidate pool.** Two configurations each for Isolation Forest, KNN, LOF and HBOS. Isolation Forest uses its default sample count or 64, KNN and LOF use 5 or 25 neighbors, and HBOS uses 5 or 10 bins. Stochastic fits use the task seed. This small, family-balanced pool is intended for development. Freeze a wider pool and test sensitivity to duplicating or removing detector families before making a broad selection claim.
-- **Cheap and expensive signals.** The basic bank supports all ten score-cluster indices, ASI/ASOI, RTM/EAG, Laplacian Score, SIREOS, MC/MCS/KNN centrality, UDR, HITS, ENS and both five-input Borda aggregations from the notebook. The fixed alert prior is 5% for partition and stability metrics. The adapters preserve each metric's native direction and apply score unification where needed. `--ireos-rows N` adds an explicitly named, shared-gamma IREOS comparison on the first N shuffled rows, capped at the batch size. It grades the resulting choice on the private target for the chosen track. The 24-row example is a smoke test.
-- **Extra views.** NPD compares selection scores with scores on diagonal-Gaussian probes. Stability uses five 80% subsample refits scoring the same selection rows. EM/MV use 2,048 uniform reference points per projected unit box, with up to three five-feature projections. The box is defined by the available fitting and selection features. Arrays are `validation` and `gaussian` (candidate × row), `refits` (candidate × refit × row), and `projected_real` and `uniform` (projection × candidate × row). These methods report unavailable on a basic bank. On the normal-only track all real rows in these views are normal, and the main fitted detectors score the hidden test once for grading.
+- **Cheap and expensive signals.** The basic bank supports all ten score-cluster indices, ASI/ASOI, RTM/EAG, Laplacian Score, SIREOS, MC/MCS/KNN centrality, UDR, HITS, ENS, and Borda and robust Borda over ASOI, Laplacian, SIREOS, MC and HITS. The `labelfree` notebooks aggregate the same five metrics but run Laplacian with 10 neighbors. The benchmark uses the library default of 5. The fixed alert prior is 5% for partition and stability metrics. The adapters preserve each metric's native direction and apply score unification where needed. `--ireos-rows N` adds an explicitly named, shared-gamma IREOS comparison on the first N shuffled rows, capped at the batch size. It grades the resulting choice on the private target. The 24-row example is a smoke test.
+- **Extra views.** NPD compares selection scores with scores on diagonal-Gaussian probes. Stability uses five 80% subsample refits scoring the same selection rows. EM/MV use 2,048 uniform reference points per projected unit box, with up to three five-feature projections. The box is defined by the available fitting and selection features. Arrays are `validation` and `gaussian` (candidate × row), `refits` (candidate × refit × row), and `projected_real` and `uniform` (projection × candidate × row). These methods report unavailable on a basic bank. All real rows in these views are normal, and the main fitted detectors score the hidden test once for grading.
 - **Reproducibility.** Inputs are checked against their pinned hashes. The public manifest records the environment versions, seeds, protocol and task-file hashes. Submissions contain source fingerprints, a custom selector's source snapshot, per-task ranks, status and timing. Reports include submission and grader fingerprints. Store the bank, inputs, environment and submissions used for a publication.
-
-## Replaying the mixed-data pilot
-
-The original four-source pilot and cohort 01 used `--track transductive`. In that setup all candidates and the selector saw the same unlabeled mixture of normal rows and outliers. The public scores were PyOD's native `decision_scores_` for the fitted rows, and the private outcomes described that same batch. Optional views used a further 70/30 split of the mixed data. These results do not measure selection from normal data alone.
-
-To reproduce the old four-source quickstart, use the dataset and seed list above with `--track transductive --extra-views --out .bench-runs/dev`, then use `.bench-runs/dev/public` for the original baselines and trials. Historical bank files remain readable. For matching historical source fingerprints, the last pre-correction revision is `8b42e48`. Bank IDs guard against grading a normal-only submission with a transductive key.
 
 ## Reading a report
 
-The `track` field identifies the preparation protocol. In a normal-only development report, `n_fit` and `n_select` count the normal rows for fitting and selection, and `n` counts the private test rows. Set `--target` to `auroc`, `pr_auc_trapezoid`, `ap`, `f1` or `precision_at_budget`. `ap` remains the command's default. `pr_auc_trapezoid` integrates the precision–recall curve by trapezoids. `ap` uses non-interpolated average precision, which ADBench calls `aucpr`. `precision_at_budget` evaluates the top 5% of test scores. [ADBench grader](https://github.com/Minqi824/ADBench/blob/3dac8221081e190f157d78e93bfa8867f90d0965/adbench/myutils.py) · [AP definition](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html)
+In a development report, `n_fit` and `n_select` count the normal rows for fitting and selection, and `n` counts the private test rows. Set `--target` to `auroc`, `pr_auc_trapezoid`, `ap`, `f1` or `precision_at_budget`. `ap` remains the command's default. `pr_auc_trapezoid` integrates the precision–recall curve by trapezoids. `ap` uses non-interpolated average precision, which ADBench calls `aucpr`. `precision_at_budget` evaluates the top 5% of test scores. [ADBench grader](https://github.com/Minqi824/ADBench/blob/3dac8221081e190f157d78e93bfa8867f90d0965/adbench/myutils.py) · [AP definition](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html)
 
-**F1 needs an alert cutoff.** For each detector the normal-only preparer takes the empirical 95th percentile of its scores on the selection normals (inverse empirical CDF). A test score strictly above that fixed cutoff is an alert. This flags at most 5% of the selection normals, with ties at the cutoff treated as normal. The actual alert rate on new data can differ. The grader computes ordinary binary F1 from the test labels at that cutoff. F1 requires a newly prepared normal-only bank containing these cutoffs.
+**F1 needs an alert cutoff.** For each detector the preparer takes the empirical 95th percentile of its scores on the selection normals (inverse empirical CDF). A test score strictly above that fixed cutoff is an alert. This flags at most 5% of the selection normals, with ties at the cutoff treated as normal. The actual alert rate on new data can differ. The grader computes ordinary binary F1 from the test labels at that cutoff.
 
 For each available supervised score the report gives the chosen detector's score and gap to the supervised best. `*_best_pick_rate` is the probability of picking one of the supervised winners under the tie policy. Within-task Spearman correlation measures agreement over the whole ranking where defined. A development report also names the actual `supervised_winners` on each task for the declared target. Validation and test expose aggregates only.
 
@@ -86,6 +78,4 @@ The example commands run all roles locally for development. For a blind evaluati
 
 Let agents query development reports freely. Freeze a shortlist before returning validation feedback, record each look, and run the final test once on a frozen revision. Validation and test reports expose aggregates. Repeated aggregate scores can still be used to overfit a held-out split. Public ADBench datasets can also be recognized. Reserve a provenance-disjoint external replication for a paper. [Blum and Hardt on adaptive leaderboards](https://proceedings.mlr.press/v37/blum15.html) · [MLE-bench's submission and grading design](https://github.com/openai/mle-bench)
 
-An agent or researcher owns the hypothesis, decision rule, interpretation and next experiment. The package's formula tests and the benchmark's regression tests run with `python -m pytest`. Installing the benchmark requirements enables the PyOD integration test.
-
-The initial audit records implementation edge cases, related methods and the result of the first ablation. [Research notes](RESEARCH_NOTES.md)
+An agent or researcher owns the hypothesis, decision rule, interpretation and next experiment. The benchmark's regression tests run with `python -m pytest`, including the PyOD integration test. The metric formulas are tested in the `labelfree` repository.

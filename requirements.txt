@@ -1,0 +1,12 @@
+# Reference environment for the lab on Python 3.12. The library is pinned to an
+# exact commit so every result names the metric implementations it used.
+# PyPI's labelfree 1.0.0 predates this API, so switch to a PyPI pin only after
+# the next release.
+labelfree @ git+https://github.com/OliverHennhoefer/label-free@3f282c530bbfb765f64c5158ad42449cc5ebb61a
+numpy==2.4.4
+scipy==1.17.1
+scikit-learn==1.8.0
+pyod==3.6.8
+numba==0.68.1
+pytest==9.2.0
+ruff==0.15.21

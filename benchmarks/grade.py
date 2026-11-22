@@ -161,10 +161,7 @@ def grade(args):
             skipped.append(key)
             continue
         if target not in outcomes:
-            raise ValueError(
-                f"Target {target!r} is unavailable in this grading key. "
-                "For F1, prepare a normal-only bank with calibrated alert thresholds."
-            )
+            raise ValueError(f"Target {target!r} is unavailable in this grading key.")
         best = {e: max(scores) for e, scores in outcomes.items()}
         if truth["split"] == "dev":
             supervised_winners[key] = [
@@ -202,7 +199,6 @@ def grade(args):
     report = {
         "version": VERSION,
         "bank_id": truth["bank_id"],
-        "track": truth.get("track", "transductive"),
         "split": truth["split"],
         "target": target,
         "reference": args.reference,
@@ -219,7 +215,7 @@ def grade(args):
         report["single_class_task_ids"] = skipped
     with new_directory(args.out) as output:
         write_json(output / "report.json", report)
-    print(f"Results for the {report['track']} track, supervised target {target}")
+    print(f"Results for supervised target {target}")
     print(
         f"{'selector':36} {'score':>7} {'gap':>8} {'vs ref':>9} {'best pick':>10} {'scored':>9}"
     )
@@ -228,6 +224,11 @@ def grade(args):
             f"{name:36} {row[target]:7.3f} {row[f'{target}_regret']:8.3f} "
             f"{row[f'delta_{target}']:+9.3f} {row[f'{target}_best_pick_rate']:10.1%} "
             f"{row['status_counts']['ok']:5}/{row['tasks']}"
+            + (" *" if row["status_counts"]["ok"] < row["tasks"] else "")
+        )
+    if any(r["status_counts"]["ok"] < r["tasks"] for r in report["summary"].values()):
+        print(
+            "* Did not rank every task. Unranked tasks use default Isolation Forest's choice."
         )
     if skipped:
         print(f"{len(skipped)} single-class batches omitted for all selectors.")

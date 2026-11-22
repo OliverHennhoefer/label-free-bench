@@ -7,17 +7,18 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
 from scipy.stats import rankdata
 
-VERSION = 1
+VERSION = 2
 REVISION = "3dac8221081e190f157d78e93bfa8867f90d0965"
 TAIL = 0.05
 DEFAULT = "IForest/default"
-# These ranking-based endpoints are available even on historical banks.
+# Ranking endpoints need only test scores. F1 also needs each detector's alert cutoff.
 ENDPOINTS = ("ap", "auroc", "pr_auc_trapezoid", "precision_at_budget")
 TARGETS = (*ENDPOINTS, "f1")
 
@@ -30,6 +31,28 @@ def digest(path: Path) -> str:
 def fingerprint(value) -> str:
     content = json.dumps(value, sort_keys=True, allow_nan=False).encode()
     return hashlib.sha256(content).hexdigest()
+
+
+def library_identity():
+    """Name the exact labelfree code: release version, VCS commit if any, source hash."""
+    import labelfree
+
+    root = Path(labelfree.__file__).parent
+    commit = None
+    try:
+        origin = json.loads(
+            distribution("labelfree").read_text("direct_url.json") or "{}"
+        )
+        commit = origin.get("vcs_info", {}).get("commit_id")
+    except PackageNotFoundError:
+        pass
+    return {
+        "version": labelfree.__version__,
+        "commit": commit,
+        "sha256": fingerprint(
+            {str(p.relative_to(root)): digest(p) for p in sorted(root.rglob("*.py"))}
+        ),
+    }
 
 
 def write_json(path, value):
