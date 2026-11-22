@@ -120,6 +120,21 @@ def main():
         "check-memory", help="Check research memory size limits and ledger links"
     )
     memory.add_argument("--root", type=Path, default=Path("research"))
+    upcoming = commands.add_parser(
+        "next", help="Print the research role that should run in this session"
+    )
+    upcoming.add_argument("--root", type=Path, default=Path("research"))
+    log = commands.add_parser("log", help="Record the end of one role session")
+    log.add_argument("--root", type=Path, default=Path("research"))
+    log.add_argument("--role", required=True)
+    log.add_argument("--slug", help="Experiment folder name")
+    log.add_argument("--summary", required=True, help="What changed, at most 60 words")
+    log.add_argument(
+        "--friction", help="A rule or step that got in the way, at most 60 words"
+    )
+    log.add_argument(
+        "--session", help="Defaults to $LAB_SESSION, then $CLAUDE_CODE_SESSION_ID"
+    )
     args = parser.parse_args()
     if args.command == "prepare":
         from .prepare import prepare as action
@@ -129,6 +144,10 @@ def main():
         from .heldout import look as action
     elif args.command == "verify-ledger":
         from .heldout import verify as action
+    elif args.command == "next":
+        from .loop import next_role as action
+    elif args.command == "log":
+        from .loop import log_role as action
     elif args.command == "check-memory":
         from .memory import main as action
     else:

@@ -15,8 +15,11 @@ This file is the index. Read it first and load entries only when you need them. 
 | `experiments/<slug>/` | `prediction.md` (committed before grading), `result.md`, selector code | Researcher | 250 and 350 words |
 | `literature/<yyyy-mm-dd>-<slug>.md` | One source: what it establishes, setting, relevance, link, date checked | Researcher | 200 words |
 | `literature/QUEUE.md` | Sources to read and verify, not yet notes | Anyone | 400 words |
+| `loop.jsonl` | One row per role session: role, experiment, session, summary, friction | `benchmarks log` | Append-only |
+| `loop.toml`, `LOOP.md`, `roles/` | Loop cadence, session steps and role contracts | A human | |
 | `HANDOFF.md` | Current state and the next action | Last session | 40 lines, overwritten |
 | `archive/` | Retired or merged entries | Gardener | Not read by default |
+| `../observer/` | Process reports for a human | Observer | 300 words, not read by research roles |
 
 `python -m benchmarks check-memory` enforces the limits and checks that every claim's evidence exists in the ledger. CI runs it.
 

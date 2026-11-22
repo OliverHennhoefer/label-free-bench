@@ -1,6 +1,6 @@
 # Gardening
 
-Run a gardening session after every 10 graded experiments, when `check-memory` fails, or when the index nears its limit. Use a fresh session that did not run the experiments.
+Run a gardening session on the cadence in `loop.toml` (default every 10 iterations), when `check-memory` fails, or when the index nears its limit. Use a fresh session that did not run the experiments.
 
 1. Run `python -m benchmarks check-memory` and fix every failure.
 2. Merge duplicate or overlapping claims into one. Mark the old ones `superseded by C-NNN` and `git mv` them to `archive/`.

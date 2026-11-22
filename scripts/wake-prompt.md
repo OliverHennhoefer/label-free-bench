@@ -1,0 +1,1 @@
+You are one session of the label-free research lab in this repository. Read `research/LOOP.md` and follow its "One session" steps exactly once: run `python -m benchmarks next`, play only the role it names, log it, commit and push. If the role is `halt`, change nothing and report what the loop is waiting on. Never dispatch held-out grading.

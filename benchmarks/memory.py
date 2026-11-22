@@ -17,6 +17,7 @@ LIMITS = {  # path pattern: (unit, maximum)
     "experiments/*/result.md": ("words", 350),
     "literature/*.md": ("words", 200),
     "literature/QUEUE.md": ("words", 400),
+    "../observer/*.md": ("words", 300),
 }
 STATUSES = ("open", "supported", "refuted", "superseded by C-")
 RUN_ID = re.compile(r"\b[0-9a-f]{12}\b")
@@ -88,6 +89,21 @@ def check(root: Path = Path("research")) -> list[str]:
                 problems.append(
                     f"{negative}:{number}: row over {NEGATIVE_ROW_WORDS} words"
                 )
+    problems += loop_problems(root)
+    return problems
+
+
+def loop_problems(root: Path) -> list[str]:
+    """Role separation: a verified experiment needs its own verifier session."""
+    from .loop import read_jsonl, separation_problems
+
+    log = read_jsonl(root / "loop.jsonl")
+    problems = separation_problems(log)
+    for result in sorted(root.glob("experiments/*/result.md")):
+        slug = result.parent.name
+        rows = [row for row in log if row.get("slug") == slug]
+        if rows and not any(row["role"] == "verifier" for row in rows):
+            problems.append(f"{result}: written without a logged verifier session")
     return problems
 
 
