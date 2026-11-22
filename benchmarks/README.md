@@ -92,8 +92,9 @@ git pull  # the ledger row arrives on main
 
 1. Create the environment **Settings → Environments → New environment** named `grading`. Under deployment branches choose *Selected branches* and add `main` only. Optionally add yourself as a required reviewer, so every look needs your click.
 2. Add the environment secret `LABFREE_GRADING_SALT`, for example the output of `python -c "import secrets; print(secrets.token_hex(32))"`. Keep a copy offline to decrypt private test files: `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:LABFREE_GRADING_SALT -in <file>.enc`. Changing it creates new held-out banks.
-3. Protect `main` so that changes, including to this workflow, arrive by reviewed pull request. If the protection blocks direct pushes, allow GitHub Actions to bypass it or the ledger push fails.
-4. Under **Settings → Actions → General**, keep *Require approval for fork pull request workflows* on. Forks never receive environment secrets, and the workflow has no pull-request trigger.
+3. Give the workflow its own way past the protection on `main`. Run `ssh-keygen -t ed25519 -N "" -C ledger -f ledger_key`. Add `ledger_key.pub` under **Settings → Deploy keys** with *Allow write access*. Add the contents of `ledger_key` as the `grading` environment secret `LEDGER_DEPLOY_KEY`, then delete both files.
+4. Protect `main` with a ruleset (**Settings → Rules → Rulesets**) that requires a pull request, and add **Deploy keys** to its bypass list. Personal repositories do not offer GitHub Actions there, so the deploy key is the only bypass.
+5. Under **Settings → Actions → General**, keep *Require approval for fork pull request workflows* on. Forks never receive environment secrets, and the workflow has no pull-request trigger.
 
 **What remains open.** The held-out dataset names are public. A selector could hard-code choices for recognizable datasets. The screen does not catch that, so a verifier reads the selector code before trusting a held-out result. A provenance-disjoint replication remains the standard for a paper. The same command runs outside GitHub: `python -m benchmarks heldout ... --sandbox <prefix>` on any machine that holds the secret and runs candidates under another account, for example a separate user on a home server. GitHub is the default because the key then never touches a machine that agents use.
 

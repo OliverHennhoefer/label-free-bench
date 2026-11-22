@@ -31,7 +31,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: heldout-ledger
@@ -101,15 +101,20 @@ jobs:
             -in .bench-runs/private-look.json -out "research/looks/$run-private.json.enc"
           rm .bench-runs/private-look.json
       - name: Commit the ledger row
+        # A write deploy key on the ruleset's bypass list is the one push to a
+        # protected main. It lives only in the grading environment.
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEDGER_DEPLOY_KEY: ${{ secrets.LEDGER_DEPLOY_KEY }}
         run: |
           run=$(tail -n 1 research/ledger.jsonl | python -c "import json,sys; print(json.load(sys.stdin)['run'])")
+          key="$RUNNER_TEMP/ledger_key"
+          (umask 077; printf '%s\n' "$LEDGER_DEPLOY_KEY" > "$key")
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add research/ledger.jsonl research/looks
           git commit -m "Record held-out look $run"
-          remote="https://x-access-token:${TOKEN}@github.com/${{ github.repository }}"
+          remote="git@github.com:${{ github.repository }}.git"
           for attempt in 1 2 3; do
             git pull --rebase "$remote" main && git push "$remote" HEAD:main && exit 0
             sleep $((attempt * 5))
