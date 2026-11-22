@@ -104,7 +104,7 @@ def flags(root: Path) -> list[str]:
     found = []
     handoff = root / "HANDOFF.md"
     if handoff.is_file():
-        first = next((l for l in handoff.read_text().splitlines() if l.strip()), "")
+        first = next((x for x in handoff.read_text().splitlines() if x.strip()), "")
         if first.lstrip("*# ").upper().startswith("FLAG"):
             found.append(f"{handoff}: {first.strip()}")
     reports = sorted((root.parent / "observer").glob("[0-9]*.md"))
