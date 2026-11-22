@@ -1,6 +1,7 @@
 import csv
 import json
 from argparse import Namespace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -479,3 +480,145 @@ def test_memory_check_links_claims_to_the_ledger(tmp_path):
     assert any("status must be" in p for p in check(root))
     (root / "README.md").write_text("line\n" * 151)
     assert any("limit 150" in p for p in check(root))
+
+
+def test_held_out_banks_need_the_ci_secret(tmp_path, monkeypatch):
+    monkeypatch.delenv(prepare.SALT_VARIABLE, raising=False)
+    assert prepare.grading_salt("dev") is None
+    assert prepare.task_seed(None, "x", 3) == 3
+    for split in ("validation", "test"):
+        with pytest.raises(PermissionError, match="held-out CI workflow"):
+            prepare.grading_salt(split)
+    seeds = {prepare.task_seed(s, d, 0) for s in ("a", "b") for d in ("x", "y")}
+    assert len(seeds) == 4 and prepare.task_seed("a", "x", 0) == prepare.task_seed(
+        "a", "x", 0
+    )
+
+
+def test_ledger_signatures_and_memory_check(tmp_path):
+    from benchmarks.heldout import sign, verify_ledger
+    from benchmarks.memory import check
+
+    root = tmp_path / "research"
+    root.mkdir()
+    ledger = root / "ledger.jsonl"
+    row = {"run": "0123456789ab", "split": "validation", "ci_run": "https://ci/1"}
+    signed = {**row, "signature": sign(row, "secret")}
+    dev = {"run": "ba9876543210", "split": "dev"}
+    ledger.write_text("\n".join(json.dumps(r) for r in (dev, signed)) + "\n")
+    assert verify_ledger(ledger, "secret") == [] and check(root) == []
+    assert verify_ledger(ledger, "other")
+    forged = {**signed, "results": {"mine": 0.99}}
+    ledger.write_text(json.dumps(forged) + "\n" + json.dumps(row) + "\n")
+    assert len(verify_ledger(ledger, "secret")) == 2
+    assert any("held-out CI workflow" in p for p in check(root))
+
+
+def _git(cwd, *command):
+    import subprocess
+
+    subprocess.run(["git", *command], cwd=cwd, check=True, capture_output=True)
+
+
+def test_held_out_look_end_to_end(tmp_path, monkeypatch):
+    pytest.importorskip("pyod")
+    import hashlib
+    import shutil
+
+    from benchmarks import heldout
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(240, 4))
+    y = (np.arange(len(X)) % 6 == 0).astype(int)
+    X[y == 1] += 3
+    rows = [["dataset", "source", "split", "git_blob"]]
+    for name in ("one", "two"):
+        np.savez(raw / f"{name}.npz", X=X, y=y)
+        data = (raw / f"{name}.npz").read_bytes()
+        blob = hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+        rows += [[name, name, "validation", blob], [name, name, "test", blob]]
+    manifest = tmp_path / "datasets.csv"
+    with manifest.open("w", newline="") as file:
+        csv.writer(file).writerows(rows)
+    monkeypatch.setattr(prepare, "MANIFEST", manifest)
+
+    lab = tmp_path / "lab"
+    experiment = lab / "research" / "experiments" / "trial"
+    experiment.mkdir(parents=True)
+    selector = experiment / "selector.py"
+    selector.write_text(
+        '"""Prefer KNN."""\ndef select(batch):\n'
+        '    return [float(f == "KNN") for f in batch.families]\n'
+    )
+    prediction = experiment / "prediction.md"
+    prediction.write_text("research/experiments/trial/selector.py should hold.\n")
+    _git(lab, "init", "-q")
+    _git(lab, "-c", "user.name=t", "-c", "user.email=t@t", "add", ".")
+    _git(lab, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+    monkeypatch.chdir(lab)
+    rel = Path("research/experiments/trial/selector.py")
+    ledger = Path("research/ledger.jsonl")
+
+    def args(split, **extra):
+        return Namespace(
+            split=split,
+            selectors=[str(rel)],
+            prediction=Path("research/experiments/trial/prediction.md"),
+            target="auroc",
+            reference="iforest_default",
+            extra_views=False,
+            max_samples=2000,
+            raw_dir=raw,
+            ledger=ledger,
+            looks=Path("research/looks"),
+            private_out=tmp_path / "private.json",
+            ci_run="https://ci/run/1",
+            sandbox=__import__("os").environ.get("LABFREE_TEST_SANDBOX"),
+            **extra,
+        )
+
+    monkeypatch.delenv(prepare.SALT_VARIABLE, raising=False)
+    with pytest.raises(PermissionError):
+        heldout.look(args("validation"))
+    monkeypatch.setenv(prepare.SALT_VARIABLE, "secret")
+    heldout.look(args("validation"))
+    assert prepare.SALT_VARIABLE not in __import__("os").environ
+    (entry,) = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert entry["split"] == "validation" and entry["ci_run"] == "https://ci/run/1"
+    assert heldout.verify_ledger(ledger, "secret") == []
+    report = read_json(Path(f"research/looks/{entry['run']}-report.json"))
+    assert "by_task" not in report and entry["report"].endswith("-report.json")
+    (mine,) = [k for k in report["summary"] if k.startswith("selector@")]
+    counts = report["summary"][mine]["status_counts"]
+    assert counts["ok"] == report["summary"][mine]["tasks"], counts
+
+    monkeypatch.setenv(prepare.SALT_VARIABLE, "secret")
+    heldout.look(args("test"))
+    test_entry = json.loads(ledger.read_text().splitlines()[-1])
+    assert set(test_entry["results"].values()) <= {"promote", "hold"}
+    assert "source_wins" in json.dumps(read_json(tmp_path / "private.json"))
+    monkeypatch.setenv(prepare.SALT_VARIABLE, "secret")
+    with pytest.raises(ValueError, match="one test look"):
+        heldout.look(args("test"))
+
+    # A different secret samples different rows, so grades cannot be rebuilt
+    # from the public files and seeds alone.
+    ledger.write_text("")
+    shutil.rmtree("research/looks")
+    monkeypatch.setenv(prepare.SALT_VARIABLE, "other")
+    heldout.look(args("validation"))
+    assert json.loads(ledger.read_text())["bank"] != entry["bank"]
+
+    prediction.write_text("Names nothing.\n")
+    _git(lab, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "y")
+    monkeypatch.setenv(prepare.SALT_VARIABLE, "other")
+    with pytest.raises(ValueError, match="name every selector"):
+        heldout.look(args("validation"))
+    outside = tmp_path / "elsewhere.py"
+    outside.write_text(selector.read_text())
+    with pytest.raises(ValueError, match="under research/experiments"):
+        heldout.check_request(
+            "validation", [outside], prediction, "iforest_default", ledger
+        )

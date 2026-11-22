@@ -3,6 +3,7 @@
 import ast
 import math
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -26,11 +27,33 @@ from .protocol import (
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_hypothesis(directory, key, snapshot, timeout):
+def run_hypothesis(directory, key, snapshot, timeout, sandbox=None):
+    """Run one selector on one task in a fresh interpreter.
+
+    `sandbox` is an optional command prefix, for example one that drops to an
+    unprivileged user without network access. The held-out CI job uses it so that
+    candidate code cannot read the grading secret or change the grader.
+    """
     start = perf_counter()
     with TemporaryDirectory() as work, TemporaryFile() as log:
         result = Path(work) / "result.json"
+        env = {**os.environ, "PYTHONPATH": str(ROOT)}
+        prefix = []
+        if sandbox:
+            os.chmod(work, 0o777)
+            # The prefix may reset the environment, so pass only what the worker needs.
+            prefix = [*shlex.split(sandbox), "env", "-i", f"PYTHONPATH={ROOT}"]
+            prefix += [f"{k}={os.environ[k]}" for k in ("PATH",) if k in os.environ]
+            prefix += [
+                "HOME=" + work,
+                "MPLCONFIGDIR=" + work,
+                "NUMBA_CACHE_DIR=" + work,
+            ]
+            # A killed prefix may not pass the signal on, so the worker times out too.
+            prefix += ["timeout", "-s", "KILL", f"{timeout:g}"]
+            env = {"PATH": os.environ.get("PATH", "")}
         command = [
+            *prefix,
             sys.executable,
             "-m",
             "benchmarks.worker",
@@ -44,7 +67,7 @@ def run_hypothesis(directory, key, snapshot, timeout):
             process = subprocess.run(
                 command,
                 cwd=work,
-                env={**os.environ, "PYTHONPATH": str(ROOT)},
+                env=env,
                 timeout=timeout,
                 stdout=subprocess.DEVNULL,
                 stderr=log,
@@ -93,6 +116,9 @@ def run(args):
                     f"Selector {args.selector} failed the static screen: "
                     + "; ".join(problems)
                 )
+            if getattr(args, "sandbox", None):
+                # The unprivileged worker must read the snapshot in staging.
+                os.chmod(output.parent, 0o755)
             snapshot = output / "selector.py"
             snapshot.write_bytes(args.selector.read_bytes())
             sha = digest(snapshot)
@@ -112,7 +138,15 @@ def run(args):
             if args.selector:
                 if digest(args.bank / f"{key}.npz") != checksum:
                     raise ValueError(f"Score bank checksum mismatch for {key}")
-                results = {name: run_hypothesis(args.bank, key, snapshot, args.timeout)}
+                results = {
+                    name: run_hypothesis(
+                        args.bank,
+                        key,
+                        snapshot,
+                        args.timeout,
+                        getattr(args, "sandbox", None),
+                    )
+                }
             else:
                 batch = read_batch(args.bank, key, checksum, bank["families"])
                 results = selectors.baselines(batch, args.ireos_rows)

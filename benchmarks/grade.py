@@ -315,6 +315,9 @@ def grade(args):
         args.out,
         prediction,
         prediction_commit,
+        signer=getattr(args, "signer", None),
+        ci_run=getattr(args, "ci_run", None),
+        published=getattr(args, "published", None),
     )
     if split == "test":
         print(f"Test decisions against {args.reference} on target {target}")
@@ -340,8 +343,23 @@ def grade(args):
         print(f"{len(skipped)} single-class batches omitted for all selectors.")
 
 
-def append_ledger(ledger, report, report_sha, out, prediction, prediction_commit):
-    """Append one look. The ledger is the only source for numbers in research notes."""
+def append_ledger(
+    ledger,
+    report,
+    report_sha,
+    out,
+    prediction,
+    prediction_commit,
+    *,
+    signer=None,
+    ci_run=None,
+    published=None,
+):
+    """Append one look. The ledger is the only source for numbers in research notes.
+
+    Held-out looks come from CI, which records its run URL and signs the row with
+    the grading secret so that a hand-written or edited row fails verification.
+    """
     if ledger is None:
         return
     target = report["target"]
@@ -368,7 +386,9 @@ def append_ledger(ledger, report, report_sha, out, prediction, prediction_commit
         "repo_commit": repository_commit(),
         "prediction": str(prediction) if prediction else None,
         "prediction_commit": prediction_commit,
-        "report": str(out),
+        "report": str(published / f"{report_sha[:12]}-report.json")
+        if published
+        else str(out),
         "selectors": {
             name: sha[:12]
             for submission in report["submissions"]
@@ -377,6 +397,10 @@ def append_ledger(ledger, report, report_sha, out, prediction, prediction_commit
         },
         "results": results,
     }
+    if report["split"] != "dev":
+        entry["ci_run"] = ci_run
+    if signer is not None:
+        entry["signature"] = signer(entry)
     ledger = Path(ledger)
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with ledger.open("a") as stream:

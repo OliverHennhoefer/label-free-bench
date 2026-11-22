@@ -86,6 +86,36 @@ def main():
         default=Path("research/ledger.jsonl"),
         help="Append-only record of every look",
     )
+    held = commands.add_parser(
+        "heldout",
+        help="CI only: build a held-out bank, run committed selectors, grade, sign",
+    )
+    held.add_argument("--split", choices=("validation", "test"), required=True)
+    held.add_argument("--selectors", type=Path, nargs="+", required=True)
+    held.add_argument("--prediction", type=Path, required=True)
+    held.add_argument("--target", choices=TARGETS, default="ap")
+    held.add_argument("--reference", default="iforest_default")
+    held.add_argument("--extra-views", action="store_true")
+    held.add_argument("--max-samples", type=int, default=2000)
+    held.add_argument("--raw-dir", type=Path, default=Path(".bench-runs/raw"))
+    held.add_argument("--ledger", type=Path, default=Path("research/ledger.jsonl"))
+    held.add_argument("--looks", type=Path, default=Path("research/looks"))
+    held.add_argument(
+        "--private-out",
+        type=Path,
+        default=Path(".bench-runs/private-look.json"),
+        help="Test win counts for the grader's eyes only. CI encrypts this file",
+    )
+    held.add_argument("--ci-run", help="URL of the CI run recorded in the ledger")
+    held.add_argument(
+        "--sandbox",
+        help="Command prefix that runs each selector without privileges or network",
+    )
+    verify = commands.add_parser(
+        "verify-ledger",
+        help="CI only: check every held-out ledger row's signature",
+    )
+    verify.add_argument("--ledger", type=Path, default=Path("research/ledger.jsonl"))
     memory = commands.add_parser(
         "check-memory", help="Check research memory size limits and ledger links"
     )
@@ -110,6 +140,10 @@ def main():
         from .prepare import prepare as action
     elif args.command == "run":
         from .run import run as action
+    elif args.command == "heldout":
+        from .heldout import look as action
+    elif args.command == "verify-ledger":
+        from .heldout import verify as action
     elif args.command == "next":
         from .loop import next_role as action
     elif args.command == "log":

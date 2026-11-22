@@ -31,6 +31,24 @@ def ledger_runs(root: Path) -> set[str]:
     return {json.loads(line)["run"] for line in path.read_text().splitlines() if line}
 
 
+def held_out_rows(root: Path) -> list[str]:
+    """Only the CI grader writes held-out rows. CI also checks their signatures."""
+    path = root / "ledger.jsonl"
+    if not path.is_file():
+        return []
+    problems = []
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        entry = json.loads(line) if line else {}
+        if entry.get("split") in ("validation", "test") and not (
+            entry.get("ci_run") and entry.get("signature")
+        ):
+            problems.append(
+                f"{path}:{number}: a {entry['split']} row must come from the "
+                "held-out CI workflow, with ci_run and signature"
+            )
+    return problems
+
+
 def size(path: Path, unit: str) -> int:
     text = path.read_text()
     return len(text.splitlines()) if unit == "lines" else len(text.split())
@@ -47,6 +65,7 @@ def check(root: Path = Path("research")) -> list[str]:
                     f"{path}: {n} {unit}, limit {maximum}. Split or garden it."
                 )
     runs = ledger_runs(root)
+    problems += held_out_rows(root)
     for path in sorted(root.glob("claims/*.md")):
         text = path.read_text()
         if not re.match(rf"# {re.escape(path.stem)}: \S", text):
