@@ -182,29 +182,29 @@ def test_freeze_grade_and_failures(tmp_path, bank, monkeypatch):
     hidden_report = read_json(args.out / "report.json")
     assert "summary" not in hidden_report and "by_task" not in hidden_report
     assert "supervised_winners" not in hidden_report
-    assert hidden_report["decisions"][flat]["decision"] == "hold"
+    assert hidden_report["decisions"][flat] == "hold"
     (entry,) = [json.loads(line) for line in ledger.read_text().splitlines()]
     assert entry["split"] == "test" and entry["prediction_commit"] == "c0ffee"
     assert entry["selectors"][flat] == flat.split("@")[1]
-    assert set(entry["results"][flat]) == {
-        "decision",
-        "source_wins",
-        "source_losses",
-        "sources",
-        "p_value",
-    }
+    assert entry["results"] == hidden_report["decisions"]
+    (look,) = (private / "looks").iterdir()
+    assert read_json(look)[flat]["source_wins"] == 0
 
     key["split"] = "validation"
     write_json(private / "truth.json", key)
     args.out = tmp_path / "validation-report"
     grade(Namespace(**vars(args), prediction=prediction, ledger=ledger))
     summary = read_json(args.out / "report.json")["summary"]
-    assert all(
-        round(v, 2) == v
-        for row in summary.values()
-        for v in row.values()
-        if isinstance(v, float)
-    )
+
+    def leaves(value):
+        if isinstance(value, dict):
+            return [x for v in value.values() for x in leaves(v)]
+        if isinstance(value, list):
+            return [x for v in value for x in leaves(v)]
+        return [value]
+
+    assert all(round(v, 2) == v for v in leaves(summary) if isinstance(v, float))
+    assert grade_module.rounded({"ci": [0.12345, 0.98765]}) == {"ci": [0.12, 0.99]}
     assert len(ledger.read_text().splitlines()) == 2
     key["bank_id"] = "wrong"
     write_json(private / "truth.json", key)

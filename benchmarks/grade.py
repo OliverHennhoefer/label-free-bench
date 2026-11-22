@@ -74,15 +74,18 @@ def decisions(records, target):
     }
 
 
+def rounded(value):
+    if isinstance(value, float):
+        return round(value, 2)
+    if isinstance(value, dict):
+        return {k: rounded(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [rounded(v) for v in value]
+    return value
+
+
 def disclose(summary, split):
-    if split == "validation":
-        return {
-            name: {
-                k: round(v, 2) if isinstance(v, float) else v for k, v in row.items()
-            }
-            for name, row in summary.items()
-        }
-    return summary
+    return rounded(summary) if split == "validation" else summary
 
 
 def load_trials(paths, truth):
@@ -279,10 +282,15 @@ def grade(args):
         "single_class_tasks": len(skipped),
     }
     if split == "test":
-        report["decisions"] = {
+        # Win counts and p-values would rank finalists that all hold, so they
+        # stay with the grading key. Only the decision leaves the grader.
+        private_tests = {
             name: decisions(rows, target)
             for name, rows in sorted(records.items())
             if name != args.reference
+        }
+        report["decisions"] = {
+            name: row["decision"] for name, row in private_tests.items()
         }
     else:
         report["summary"] = disclose(
@@ -296,6 +304,10 @@ def grade(args):
     with new_directory(args.out) as output:
         write_json(output / "report.json", report)
         report_sha = digest(output / "report.json")
+    if split == "test":
+        looks = args.truth / "looks"
+        looks.mkdir(mode=0o700, exist_ok=True)
+        write_json(looks / f"{report_sha[:12]}.json", private_tests)
     append_ledger(
         getattr(args, "ledger", None),
         report,
@@ -306,11 +318,8 @@ def grade(args):
     )
     if split == "test":
         print(f"Test decisions against {args.reference} on target {target}")
-        for name, row in report["decisions"].items():
-            print(
-                f"{name:36} {row['decision']:>8} "
-                f"{row['source_wins']}/{row['sources']} sources won"
-            )
+        for name, decision in report["decisions"].items():
+            print(f"{name:36} {decision:>8}")
         return
     print(f"Results for supervised target {target}")
     print(
