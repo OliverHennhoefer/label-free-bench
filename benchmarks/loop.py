@@ -19,7 +19,7 @@ from pathlib import Path
 from .memory import check as check_memory
 from .protocol import digest
 
-ROLES = ("proposer", "runner", "verifier", "gardener", "observer")
+ROLES = ("setup", "proposer", "runner", "verifier", "gardener", "observer")
 EXPERIMENT_ROLES = ("proposer", "runner", "verifier")
 DEFAULTS = {
     "gardener_every": 10,
@@ -27,6 +27,7 @@ DEFAULTS = {
     "observer_warmup": 5,
     "observer_every_after": 5,
     "max_runner_attempts": 2,
+    "max_iterations": 0,
 }
 
 
@@ -124,11 +125,21 @@ def decide(root: Path = Path("research")) -> Assignment:
         f"held-out look requested in {p}"
         for p in sorted((root / "experiments").glob("*/heldout-request.md"))
     ]
+    if not any(row["role"] == "setup" for row in log):
+        return Assignment("setup", reason="iteration 0 has not run", waiting=waiting)
+    cap, done = cadence["max_iterations"], len(iterations(log))
+    if cap and done >= cap:
+        if since(log, "observer"):
+            reason = f"final report after {done} iterations"
+            return Assignment("observer", reason=reason, waiting=waiting)
+        reason = f"iteration cap of {cap} reached"
+        return Assignment("halt", reason=reason, waiting=waiting)
     if problems := check_memory(root):
         return Assignment("gardener", reason=problems[0], waiting=waiting)
     if observer_due(log, cadence):
         return Assignment("observer", reason="observer cadence", waiting=waiting)
-    if since(log, "gardener") >= cadence["gardener_every"]:
+    garden = cadence["gardener_every"]
+    if garden and since(log, "gardener") >= garden:
         return Assignment(
             "gardener",
             reason=f"{cadence['gardener_every']} iterations since gardening",
