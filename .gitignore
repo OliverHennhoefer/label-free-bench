@@ -13,5 +13,4 @@ __pycache__/
 .idea/
 .vscode/
 .claude/
-CLAUDE.md
 .DS_Store

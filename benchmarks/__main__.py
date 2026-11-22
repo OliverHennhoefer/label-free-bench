@@ -31,6 +31,11 @@ def main():
         help="Cache refits and held-out reference scores for NPD, EM/MV and stability",
     )
     prep.add_argument("--out", type=Path, required=True)
+    prep.add_argument(
+        "--key-dir",
+        type=Path,
+        help="Move the private grading key here, outside the agent's workspace",
+    )
     run = commands.add_parser(
         "run", help="Run the library baselines or one selector against a public bank"
     )
@@ -70,11 +75,28 @@ def main():
         help="Reference selector for paired score differences",
     )
     grade.add_argument("--out", type=Path, required=True)
+    grade.add_argument(
+        "--prediction",
+        type=Path,
+        help="Committed prediction file. Required for validation and test looks",
+    )
+    grade.add_argument(
+        "--ledger",
+        type=Path,
+        default=Path("research/ledger.jsonl"),
+        help="Append-only record of every look",
+    )
+    memory = commands.add_parser(
+        "check-memory", help="Check research memory size limits and ledger links"
+    )
+    memory.add_argument("--root", type=Path, default=Path("research"))
     args = parser.parse_args()
     if args.command == "prepare":
         from .prepare import prepare as action
     elif args.command == "run":
         from .run import run as action
+    elif args.command == "check-memory":
+        from .memory import main as action
     else:
         from .grade import grade as action
     action(args)

@@ -22,7 +22,7 @@ python -m pip install -r requirements.txt
 run=.bench-runs/normal-only
 python -m benchmarks prepare --download --raw-dir .bench-runs/raw \
   --split dev --datasets 4_breastw 6_cardio 18_Ionosphere 29_Pima \
-  --seeds 0 1 --out "$run/dev"
+  --seeds 0 1 --out "$run/dev" --key-dir ../lab-keys/normal-only-dev
 
 python -m benchmarks run --bank "$run/dev/public" \
   --ireos-rows 24 --out "$run/baselines"
@@ -31,16 +31,16 @@ python -m benchmarks run --bank "$run/dev/public" \
   --selector benchmarks/example_selector.py \
   --out "$run/trial-001"
 
-python -m benchmarks grade --truth "$run/dev/private" \
+python -m benchmarks grade --truth ../lab-keys/normal-only-dev \
   --submissions "$run/baselines" "$run/trial-001" \
   --target auroc --reference iforest_default --out "$run/report-001"
 ```
 
-For the next iteration, run the new selector against the **same public directory**. Grade both trial directories together with the cached baselines. Pass the previous selector's full name from its report as `--reference` for a paired comparison. Each run has a new output path and snapshots its source and hypothesis. Changing the portfolio, evidence, preprocessing or row sample creates a new bank. The grader checks bank IDs and requires every submitted selector to account for every task.
+For the next iteration, run the new selector against the **same public directory**. Grade both trial directories together with the cached baselines. Pass the previous selector's full name from its report as `--reference` for a paired comparison. Each run has a new output path and snapshots its source and hypothesis. Changing the portfolio, evidence, preprocessing or row sample creates a new bank. The grader checks bank IDs and requires every submitted selector to account for every task. Every grade appends one row to `research/ledger.jsonl`, the only source for numbers in research notes. `--key-dir` moves the grading key out of the workspace. Without it the key stays in `<out>/private`.
 
 ## Writing a hypothesis
 
-A standalone Python module exports `select(batch)`. Return one value per candidate, with larger values preferred, or return `None` to abstain. The module docstring records the hypothesis. The CLI also accepts `--hypothesis`. A fresh Python process evaluates each custom selector on each task, with a default wall-clock budget of 120 seconds including startup. Set `--timeout` to change it. Each task gets read-only arrays.
+A standalone Python module exports `select(batch)`. Before it runs, a static screen rejects imports and calls that read files, reach the network, start processes or execute generated code. The screen is a tripwire for honest mistakes and shortcuts, not a sandbox. Return one value per candidate, with larger values preferred, or return `None` to abstain. The module docstring records the hypothesis. The CLI also accepts `--hypothesis`. A fresh Python process evaluates each custom selector on each task, with a default wall-clock budget of 120 seconds including startup. Set `--timeout` to change it. Each task gets read-only arrays.
 
 | Input | Meaning |
 | --- | --- |
@@ -58,7 +58,8 @@ The [example selector](example_selector.py) reproduces the library's model-centr
 - **Candidate pool.** Two configurations each for Isolation Forest, KNN, LOF and HBOS. Isolation Forest uses its default sample count or 64, KNN and LOF use 5 or 25 neighbors, and HBOS uses 5 or 10 bins. Stochastic fits use the task seed. This small, family-balanced pool is intended for development. Freeze a wider pool and test sensitivity to duplicating or removing detector families before making a broad selection claim.
 - **Cheap and expensive signals.** The basic bank supports all ten score-cluster indices, ASI/ASOI, RTM/EAG, Laplacian Score, SIREOS, MC/MCS/KNN centrality, UDR, HITS, ENS, and Borda and robust Borda over ASOI, Laplacian, SIREOS, MC and HITS. The `labelfree` notebooks aggregate the same five metrics but run Laplacian with 10 neighbors. The benchmark uses the library default of 5. The fixed alert prior is 5% for partition and stability metrics. The adapters preserve each metric's native direction and apply score unification where needed. `--ireos-rows N` adds an explicitly named, shared-gamma IREOS comparison on the first N shuffled rows, capped at the batch size. It grades the resulting choice on the private target. The 24-row example is a smoke test.
 - **Extra views.** NPD compares selection scores with scores on diagonal-Gaussian probes. Stability uses five 80% subsample refits scoring the same selection rows. EM/MV use 2,048 uniform reference points per projected unit box, with up to three five-feature projections. The box is defined by the available fitting and selection features. Arrays are `validation` and `gaussian` (candidate × row), `refits` (candidate × refit × row), and `projected_real` and `uniform` (projection × candidate × row). These methods report unavailable on a basic bank. All real rows in these views are normal, and the main fitted detectors score the hidden test once for grading.
-- **Reproducibility.** Inputs are checked against their pinned hashes. The public manifest records the environment versions, seeds, protocol and task-file hashes. Submissions contain source fingerprints, a custom selector's source snapshot, per-task ranks, status and timing. Reports include submission and grader fingerprints. Store the bank, inputs, environment and submissions used for a publication.
+- **Disclosure by split.** Development reports are complete, including per-task picks and supervised winners. Validation reports give aggregates rounded to two decimals. Test reports give only a promote-or-hold decision per selector against the reference: a one-sided exact sign test over source groups at α = 0.05. The 14 test files form 10 source groups, so promotion needs at least 9 sources to improve when none ties. Reserve test for one or two finalists. Validation and test looks require `--prediction`, a file committed to git and unchanged since, whose commit the ledger records.
+- **Reproducibility.** Inputs are checked against their pinned hashes. The public manifest records the environment versions, the `labelfree` version, commit and source hash, seeds, protocol and task-file hashes. Submissions contain source fingerprints, a custom selector's source snapshot, per-task ranks, status and timing. Reports include submission and grader fingerprints. Store the bank, inputs, environment and submissions used for a publication.
 
 ## Reading a report
 
@@ -74,8 +75,8 @@ The report averages seeds within datasets, datasets within source groups and sou
 
 ## Giving agents access
 
-The example commands run all roles locally for development. For a blind evaluation, a trusted preparer keeps the raw NPZs and the `private` directory in grader-only storage. Give the candidate execution environment a read-only copy of `public`, its method code, a writable submission destination and no network access. An external evaluator can call `grade` and return a report without executing candidate code. The surrounding execution environment supplies filesystem and network isolation.
+The example commands run all roles locally for development. For a blind evaluation, a trusted preparer keeps the raw NPZs and the grading key in grader-only storage, for example under another user account. Give the candidate execution environment a read-only copy of `public`, its method code, a writable submission destination and no network access. An external evaluator can call `grade` and return a report without executing candidate code. The surrounding execution environment supplies filesystem and network isolation.
 
-Let agents query development reports freely. Freeze a shortlist before returning validation feedback, record each look, and run the final test once on a frozen revision. Validation and test reports expose aggregates. Repeated aggregate scores can still be used to overfit a held-out split. Public ADBench datasets can also be recognized. Reserve a provenance-disjoint external replication for a paper. [Blum and Hardt on adaptive leaderboards](https://proceedings.mlr.press/v37/blum15.html) · [MLE-bench's submission and grading design](https://github.com/openai/mle-bench)
+Let agents query development reports freely. Freeze a shortlist before returning validation feedback and run the final test once on a frozen revision. The ledger records every look. Repeated aggregate scores can still be used to overfit a held-out split, which is why validation is rounded and test gives decisions only. Public ADBench datasets can also be recognized. Reserve a provenance-disjoint external replication for a paper. [Blum and Hardt on adaptive leaderboards](https://proceedings.mlr.press/v37/blum15.html) · [MLE-bench's submission and grading design](https://github.com/openai/mle-bench)
 
 An agent or researcher owns the hypothesis, decision rule, interpretation and next experiment. The benchmark's regression tests run with `python -m pytest`, including the PyOD integration test. The metric formulas are tested in the `labelfree` repository.

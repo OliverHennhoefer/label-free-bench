@@ -5,7 +5,7 @@ import hashlib
 import platform
 from importlib.metadata import version
 from pathlib import Path
-from shutil import copyfileobj
+from shutil import copyfileobj, move
 from tempfile import TemporaryDirectory
 from urllib.request import urlopen
 
@@ -291,4 +291,11 @@ def prepare(args):
                 "tasks": truth,
             },
         )
+    key_dir = getattr(args, "key_dir", None)
+    if key_dir is not None:
+        # Keep the grading key outside the workspace that selector code can read.
+        if key_dir.exists():
+            raise FileExistsError(f"Choose a new key directory: {key_dir}")
+        key_dir.parent.mkdir(parents=True, exist_ok=True)
+        move(args.out / "private", key_dir)
     print(f"Prepared {len(truth)} tasks for {args.split}. Bank {bank_id[:12]}")

@@ -1,10 +1,19 @@
-"""Grade frozen rankings. This process only reads data files."""
+"""Grade frozen rankings and append every look to the run ledger.
 
+Disclosure depends on the split. Development reports are complete. Validation
+reports give aggregates rounded to two decimals. Test reports give only a
+promote-or-hold decision per selector from a one-sided sign test over source
+groups. Validation and test looks require a committed prediction file.
+"""
+
+import json
+import subprocess
 from collections import defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import rankdata, spearmanr
+from scipy.stats import binomtest, rankdata, spearmanr
 
 from .protocol import (
     DEFAULT,
@@ -18,6 +27,62 @@ from .protocol import (
 
 DEFAULT_POLICY = "iforest_default"
 RANDOM_POLICY = "uniform_model"
+ALPHA = 0.05
+
+
+def committed(path: Path) -> str:
+    """Return the commit that holds this file unchanged, or raise."""
+    path = path.resolve()
+
+    def git(*command):
+        return subprocess.run(
+            ["git", *command],
+            cwd=path.parent,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    tracked = git("ls-files", "--error-unmatch", path.name).returncode == 0
+    clean = git("diff", "--quiet", "HEAD", "--", path.name).returncode == 0
+    if not (path.is_file() and tracked and clean):
+        raise ValueError(
+            f"Commit the prediction before a held-out look: {path}. "
+            "It must be tracked and unchanged since the last commit."
+        )
+    return git("log", "-1", "--format=%H", "--", path.name).stdout.strip()
+
+
+def repository_commit():
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+    )
+    return result.stdout.strip() or None
+
+
+def decisions(records, target):
+    """One-sided exact sign test of source-level gains over the reference."""
+    gains = group_means(records, f"delta_{target}")
+    wins, losses = int(np.sum(gains > 0)), int(np.sum(gains < 0))
+    p = binomtest(wins, wins + losses, alternative="greater").pvalue if wins else 1.0
+    return {
+        "decision": "promote" if p < ALPHA else "hold",
+        "source_wins": wins,
+        "source_losses": losses,
+        "sources": len(gains),
+        "p_value": float(p),
+    }
+
+
+def disclose(summary, split):
+    if split == "validation":
+        return {
+            name: {
+                k: round(v, 2) if isinstance(v, float) else v for k, v in row.items()
+            }
+            for name, row in summary.items()
+        }
+    return summary
 
 
 def load_trials(paths, truth):
@@ -144,6 +209,13 @@ def summarize(records, target="ap"):
 def grade(args):
     truth = read_json(args.truth / "truth.json")
     target = getattr(args, "target", "ap")
+    split = truth["split"]
+    prediction = getattr(args, "prediction", None)
+    prediction_commit = None
+    if split != "dev":
+        if prediction is None:
+            raise ValueError(f"A {split} look needs --prediction <committed file>")
+        prediction_commit = committed(prediction)
     submissions, provenance = load_trials(args.submissions, truth)
     candidates = truth["candidates"]
     default = candidates.index(DEFAULT)
@@ -199,22 +271,47 @@ def grade(args):
     report = {
         "version": VERSION,
         "bank_id": truth["bank_id"],
-        "split": truth["split"],
+        "split": split,
         "target": target,
         "reference": args.reference,
         "submissions": provenance,
         "grader_sha256": digest(Path(__file__)),
         "single_class_tasks": len(skipped),
-        "summary": {
-            name: summarize(rows, target) for name, rows in sorted(records.items())
-        },
     }
-    if truth["split"] == "dev":
+    if split == "test":
+        report["decisions"] = {
+            name: decisions(rows, target)
+            for name, rows in sorted(records.items())
+            if name != args.reference
+        }
+    else:
+        report["summary"] = disclose(
+            {name: summarize(rows, target) for name, rows in sorted(records.items())},
+            split,
+        )
+    if split == "dev":
         report["by_task"] = dict(records)
         report["supervised_winners"] = supervised_winners
         report["single_class_task_ids"] = skipped
     with new_directory(args.out) as output:
         write_json(output / "report.json", report)
+        report_sha = digest(output / "report.json")
+    append_ledger(
+        getattr(args, "ledger", None),
+        report,
+        report_sha,
+        args.out,
+        prediction,
+        prediction_commit,
+    )
+    if split == "test":
+        print(f"Test decisions against {args.reference} on target {target}")
+        for name, row in report["decisions"].items():
+            print(
+                f"{name:36} {row['decision']:>8} "
+                f"{row['source_wins']}/{row['sources']} sources won"
+            )
+        return
     print(f"Results for supervised target {target}")
     print(
         f"{'selector':36} {'score':>7} {'gap':>8} {'vs ref':>9} {'best pick':>10} {'scored':>9}"
@@ -232,3 +329,47 @@ def grade(args):
         )
     if skipped:
         print(f"{len(skipped)} single-class batches omitted for all selectors.")
+
+
+def append_ledger(ledger, report, report_sha, out, prediction, prediction_commit):
+    """Append one look. The ledger is the only source for numbers in research notes."""
+    if ledger is None:
+        return
+    target = report["target"]
+    if "decisions" in report:
+        results = report["decisions"]
+    else:
+        results = {
+            name: {
+                target: row[target],
+                f"{target}_regret": row[f"{target}_regret"],
+                f"delta_{target}": row[f"delta_{target}"],
+                "ok": row["status_counts"]["ok"],
+                "tasks": row["tasks"],
+            }
+            for name, row in report["summary"].items()
+        }
+    entry = {
+        "run": report_sha[:12],
+        "time": datetime.now(UTC).isoformat(timespec="seconds"),
+        "split": report["split"],
+        "bank": report["bank_id"][:12],
+        "target": target,
+        "reference": report["reference"],
+        "repo_commit": repository_commit(),
+        "prediction": str(prediction) if prediction else None,
+        "prediction_commit": prediction_commit,
+        "report": str(out),
+        "selectors": {
+            name: sha[:12]
+            for submission in report["submissions"]
+            for name in submission["methods"]
+            if (sha := submission.get("selector_sha256"))
+        },
+        "results": results,
+    }
+    ledger = Path(ledger)
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a") as stream:
+        stream.write(json.dumps(entry, allow_nan=False) + "\n")
+    print(f"Ledger entry {entry['run']} appended to {ledger}")

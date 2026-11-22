@@ -2,6 +2,7 @@
 
 import ast
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +10,7 @@ from tempfile import TemporaryDirectory, TemporaryFile
 from time import perf_counter
 
 from . import protocol, selectors, worker
+from .screen import screen
 from .protocol import (
     VERSION,
     digest,
@@ -19,6 +21,9 @@ from .protocol import (
     read_json,
     write_json,
 )
+
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def run_hypothesis(directory, key, snapshot, timeout):
@@ -35,8 +40,11 @@ def run_hypothesis(directory, key, snapshot, timeout):
             str(result),
         ]
         try:
+            # Start in an empty directory so relative paths reach nothing.
             process = subprocess.run(
                 command,
+                cwd=work,
+                env={**os.environ, "PYTHONPATH": str(ROOT)},
                 timeout=timeout,
                 stdout=subprocess.DEVNULL,
                 stderr=log,
@@ -79,6 +87,12 @@ def run(args):
             "tasks": {},
         }
         if args.selector:
+            problems = screen(args.selector.read_text())
+            if problems:
+                raise ValueError(
+                    f"Selector {args.selector} failed the static screen: "
+                    + "; ".join(problems)
+                )
             snapshot = output / "selector.py"
             snapshot.write_bytes(args.selector.read_bytes())
             sha = digest(snapshot)

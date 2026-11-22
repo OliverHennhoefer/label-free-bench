@@ -1,9 +1,11 @@
 import csv
+import json
 from argparse import Namespace
 
 import numpy as np
 import pytest
 
+from benchmarks import grade as grade_module
 from benchmarks import prepare
 from benchmarks.grade import evaluate_choice, grade, group_means
 from benchmarks.protocol import (
@@ -112,7 +114,7 @@ def bank(tmp_path):
     return public, private
 
 
-def test_freeze_grade_and_failures(tmp_path, bank):
+def test_freeze_grade_and_failures(tmp_path, bank, monkeypatch):
     public, private = bank
     trials = []
     for name, expression in [
@@ -168,13 +170,46 @@ def test_freeze_grade_and_failures(tmp_path, bank):
     key["split"] = "test"
     write_json(private / "truth.json", key)
     args.out = tmp_path / "holdout-report"
-    grade(args)
+    with pytest.raises(ValueError, match="needs --prediction"):
+        grade(args)
+    prediction = tmp_path / "prediction.md"
+    prediction.write_text("Expect no gain.")
+    with pytest.raises(ValueError, match="Commit the prediction"):
+        grade(Namespace(**vars(args), prediction=prediction))
+    monkeypatch.setattr(grade_module, "committed", lambda path: "c0ffee")
+    ledger = tmp_path / "ledger.jsonl"
+    grade(Namespace(**vars(args), prediction=prediction, ledger=ledger))
     hidden_report = read_json(args.out / "report.json")
-    assert "by_task" not in hidden_report and "supervised_winners" not in hidden_report
+    assert "summary" not in hidden_report and "by_task" not in hidden_report
+    assert "supervised_winners" not in hidden_report
+    assert hidden_report["decisions"][flat]["decision"] == "hold"
+    (entry,) = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert entry["split"] == "test" and entry["prediction_commit"] == "c0ffee"
+    assert entry["selectors"][flat] == flat.split("@")[1]
+    assert set(entry["results"][flat]) == {
+        "decision",
+        "source_wins",
+        "source_losses",
+        "sources",
+        "p_value",
+    }
+
+    key["split"] = "validation"
+    write_json(private / "truth.json", key)
+    args.out = tmp_path / "validation-report"
+    grade(Namespace(**vars(args), prediction=prediction, ledger=ledger))
+    summary = read_json(args.out / "report.json")["summary"]
+    assert all(
+        round(v, 2) == v
+        for row in summary.values()
+        for v in row.values()
+        if isinstance(v, float)
+    )
+    assert len(ledger.read_text().splitlines()) == 2
     key["bank_id"] = "wrong"
     write_json(private / "truth.json", key)
     with pytest.raises(ValueError, match="different benchmark bank"):
-        grade(args)
+        grade(Namespace(**vars(args), prediction=prediction))
 
 
 def test_corrupt_bank_and_incomplete_submission(tmp_path, bank):
@@ -396,3 +431,51 @@ def test_prepare_and_baselines_on_pyod(tmp_path, monkeypatch):
     assert report["summary"]["iforest_default"][f"delta_{target}"] == 0
     assert report["summary"]["iforest_default"]["ap"] == task["outcomes"]["ap"][0]
     assert report["by_task"]["iforest_default"][0]["n_fit"] == task["n_fit"]
+
+
+def test_static_screen_rejects_file_and_process_access(tmp_path, bank):
+    from benchmarks.screen import screen
+
+    assert screen("import numpy as np\ndef select(batch):\n    return [1, 2]") == []
+    for source in (
+        "import os\ndef select(batch): return [1, 2]",
+        "from pathlib import Path\ndef select(batch): return [1, 2]",
+        "def select(batch): return open('key').read()",
+        "import numpy as np\ndef select(batch): return np.load('truth.npz')",
+        "def score(batch): return [1, 2]",
+    ):
+        assert screen(source), source
+    public, _ = bank
+    plugin = tmp_path / "peek.py"
+    plugin.write_text("import os\ndef select(batch): return [1, 2]")
+    out = tmp_path / "peek"
+    with pytest.raises(ValueError, match="static screen"):
+        run(
+            Namespace(
+                bank=public,
+                out=out,
+                selector=plugin,
+                hypothesis=None,
+                ireos_rows=None,
+                timeout=30,
+            )
+        )
+    assert not out.exists()
+
+
+def test_memory_check_links_claims_to_the_ledger(tmp_path):
+    from benchmarks.memory import check
+
+    root = tmp_path / "research"
+    (root / "claims").mkdir(parents=True)
+    (root / "README.md").write_text("# Index\n")
+    (root / "ledger.jsonl").write_text(json.dumps({"run": "0123456789ab"}) + "\n")
+    claim = root / "claims" / "C-001.md"
+    claim.write_text("# C-001: A claim\nstatus: supported\nevidence: 0123456789ab\n")
+    assert check(root) == []
+    claim.write_text("# C-001: A claim\nstatus: supported\nevidence: ffffffffffff\n")
+    assert any("not in the ledger" in p for p in check(root))
+    claim.write_text("# C-001: A claim\nstatus: maybe\n")
+    assert any("status must be" in p for p in check(root))
+    (root / "README.md").write_text("line\n" * 151)
+    assert any("limit 150" in p for p in check(root))

@@ -1,27 +1,49 @@
 # Research memory
 
-**If I only have examples of normal behavior, which detector can I select that comes closest to the choice I would make if I had real outliers and could compare supervised scores such as ROC AUC, PR AUC or F1?** Fit the candidate detectors on normal records. Use other normal records to choose one and freeze the choice. The trusted grader evaluates those same fitted detectors on the same hidden mix of normal records and real outliers. Compare the chosen detector’s score with the best available score for each named target. If the best hidden ROC AUC is 0.94 and the chosen detector gets 0.93, the choice costs 0.01 ROC AUC. The label-free metric can use its own numerical scale. [Normal-only benchmark](../benchmarks/README.md#normal-only-protocol)
+**Question.** With only known-normal data, how close can a selector come to the detector a labeled evaluation would choose for a named target (ROC AUC, AP, PR AUC or F1)? [Protocol](../benchmarks/README.md#normal-only-protocol)
 
-The first cohort used mixed observations for both fitting and selection. Its grades answer a different question. We have verified the corrected setup on artificial test fixtures. There is no normal-only ADBench research result from the first cohort.
+This file is the index. Read it first and load entries only when you need them. Keep it under 150 lines: one line per entry, details in the entry.
 
-## Historical findings and their scope
+## Layout
 
-| Finding or open question | Scope and evidence | Decision |
-| --- | --- | --- |
-| AP and AUROC can choose different detectors. A fixed detector can be competitive. | On both open Pima seeds, HBOS/10 led on AP and KNN/25 on AUROC. On the four open sources, default Isolation Forest averaged 0.705 AP. [Development evidence](AGENT_BRIEF.md) | Name the supervised decision before judging a proposal. |
-| Density-conditioning a family vote failed its first ablation. | Mean AP 0.720 with quartile conditioning and 0.729 with a single bin, four development sources. [Audit](../benchmarks/RESEARCH_NOTES.md) · [Frozen single-bin comparator](../benchmarks/hypotheses/pooled_agreement.py) | Retain the simpler version as a comparator. |
-| Deleting flagged rows can improve typical feature predictions. The incremental selection benefit is unresolved. | The effect held in 20/20 constructed populations. On the four open sources, repair and direct residual scoring achieved 0.6841 and 0.6837 AP. [Prediction](experiments/conditional_repair/design.md) · [Outcome and harms](experiments/conditional_repair/result.md) | Retire this specification for general selection. A future setting would have to discriminate between deletion and individual residuals. |
-| At a fixed alert budget a correct anomaly reference orders detectors by precision. A wrong reference can make more accurate estimation harmful. | Exact calculation in two finite populations. It concerns one operating point. [Derivation and executable](experiments/reference_mass/README.md) · [Relevant literature](literature/2026-11-21-label-free-selection.md) | Require independent justification for a proposed reference distribution. |
-| The first cohort found no stronger general single-batch selector. Reflection's apparent gain over default disappears without Wine. A monotone-calibration extension changed some AP orderings but failed its minimax decision screen. | Six prospectively reserved development sources, two seeds each. Mean AP was 0.1332 for reflection, 0.1654 for its clipped control and 0.2062 for S_Dbw. The radial arm screened 258,840 pairs and withheld its submission. [Cohort report](experiments/cohort_01/result.md) · [Reusable evidence](experiments/cohort_01/development.json) | Retire both specifications as general-selection leads. A known physical center remains a testable scope for reflection. |
-| Two prevalence-ordered unlabeled cohorts can identify some AP rankings under stable class-conditional distributions. | Finite-support population derivation, a simultaneous finite-sample guarantee for fixed binary detectors, and a failure under within-class drift. The finite-sample test needed very large samples in the worked example. [Proof and counterexamples](experiments/cohort_01/critique/ordered_mixtures.md) · [Power experiment](experiments/cohort_01/critique/binary_precision_result.md) | Maintain as a scoped theoretical lead. Check prior art and obtain an independently justified collection protocol before claiming practical transfer. |
+| Path | Holds | Written by | Limit |
+| --- | --- | --- | --- |
+| `ledger.jsonl` | One row per grade: run ID, split, bank, commits, selector hashes, results | The grader only | Append-only |
+| `claims/C-NNN.md` | One atomic claim, its scope, status and ledger evidence | Verifier, gardener | 150 words |
+| `negative.md` | One row per dead end: mechanism tested, scope, why it failed, when to reopen | Verifier, gardener | 60 words a row |
+| `experiments/<slug>/` | `prediction.md` (committed before grading), `result.md`, selector code | Researcher | 250 and 350 words |
+| `literature/<yyyy-mm-dd>-<slug>.md` | One source: what it establishes, setting, relevance, link, date checked | Researcher | 200 words |
+| `literature/QUEUE.md` | Sources to read and verify, not yet notes | Anyone | 400 words |
+| `HANDOFF.md` | Current state and the next action | Last session | 40 lines, overwritten |
+| `archive/` | Retired or merged entries | Gardener | Not read by default |
 
-The [researcher brief](AGENT_BRIEF.md) can be handed to an agent as written. The [benchmark](../benchmarks/README.md) defines inputs, outputs, splits and grading. The [library audit](../benchmarks/RESEARCH_NOTES.md) remains the record of implementation caveats. The first cohort is tracked in its [experiment directory](experiments/cohort_01/README.md). The earlier normal-only benchmark, label-free-bench v1, its reference results and the sources it exposed are summarized in [prior work](prior/label-free-bench-v1.md).
+`python -m benchmarks check-memory` enforces the limits and checks that every claim's evidence exists in the ledger. CI runs it.
 
-**Exposure after cohort 01.** The four original sources (Wisconsin breast, Cardio, Ionosphere, Pima) and the six transfer sources (Letter, Mammography, Optdigits, Vertebral, Waveform, Wine) are now open development evidence. The validation and test splits have had zero looks in these experiments. [Release manifest](experiments/cohort_01/allocation.json)
+## Rules for entries
 
-## Where to write the next piece of evidence
+- **Numbers come from the ledger.** Cite run IDs. Never copy a number from a summary or from memory.
+- **Claims are atomic and scoped.** One statement, the conditions it covers, status `open`, `supported`, `refuted` or `superseded by C-NNN`.
+- **Negative results stay short and specific.** Record the mechanism and scope that failed, not "X does not work", plus what would justify reopening it.
+- **IDs are permanent.** Merge or retire by marking `superseded by` and moving the old file to `archive/` with `git mv`. Never delete evidence.
+- **Literature on demand.** Search when a hypothesis is proposed and again before any novelty claim. Record the query and date in the note.
 
-- **Experiment.** Use `research/experiments/<question>/`. Save assumptions, a rival and a discriminating prediction before new grades. Add a separate result with the compared choices, bank and code identifiers, important failures, decision and next open question. Keep a prior prediction intact when an idea changes. Link a follow-up or a correction. Small executable probes can live next to their records. Reusable benchmark selectors go in `benchmarks/hypotheses/`.
-- **Literature review.** Use `research/literature/YYYY-MM-DD-<question>.md` when a question calls for a search. Record the question, date, search scope, primary sources, what each actually establishes, and what the review changes. Link a later review when new evidence changes a claim. A citation can belong to several experiments without duplicating the review.
-- **Handoff.** Read this index and the linked evidence for the open question. End an iteration by adding the decision, its scope and a link here. Keep negative results and competing explanations searchable. Use `rg -ni 'residual|volume' research` to find earlier work by concept. Parallel researchers can write separate experiment notes and have the evaluator reconcile the index after grading.
-- **Run data.** `.bench-runs/` is a local cache for score banks, source snapshots, submissions and machine reports. The durable record links the bank and selector fingerprints, commands and interpretable result. For a paper, archive the exact allowed artifacts in access-controlled, immutable storage and record their checksums. Keep raw labels, grading keys and restricted feedback with the evaluator. Record which sources have become development evidence so future agents know which observations are independent.
+## Open questions
+
+Protocol questions, not hypotheses. Each changes the frozen protocol, so adopting one needs a new bank and a recorded decision.
+
+- Q1. Widen the pool beyond 8 candidates in 4 families, for example adding PCA and One-Class SVM, and test sensitivity to removing or duplicating a family.
+- Q2. Report normalized regret, (oracle − chosen) / (oracle − worst), next to raw regret.
+- Q3. Count a failed or abstaining selector as the worst choice, next to the default-Isolation-Forest fallback.
+- Q4. Test robustness to anomaly prevalence by reweighting classes to 1%, 5% and 10%.
+- Q5. Add a canary: a renamed, row- and column-permuted copy of a development dataset must receive the same ranking.
+
+## Claims
+
+None yet.
+
+## Data exposure
+
+Record every source that has produced graded feedback outside development.
+
+- **label-free-bench v1 (July 2026, commit `0841a31` in this repository's history)** published aggregate graded results that included validation sources vowels and musk, and test sources landsat, satellite, satimage-2, shuttle, fault and PageBlocks. No per-dataset outcomes were published. Disclose this in any paper.
+- **Validation and test looks under this protocol:** none.
