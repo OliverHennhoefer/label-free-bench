@@ -2,6 +2,8 @@
 
 import csv
 import hashlib
+import hmac
+import os
 import platform
 from importlib.metadata import version
 from pathlib import Path
@@ -36,6 +38,36 @@ from .protocol import (
 )
 
 MANIFEST = Path(__file__).with_name("adbench.csv")
+SALT_VARIABLE = "LABFREE_GRADING_SALT"
+HELD_OUT = ("validation", "test")
+
+
+def grading_salt(split):
+    """Held-out banks need the CI secret. Development banks never use one."""
+    if split not in HELD_OUT:
+        return None
+    salt = os.environ.get(SALT_VARIABLE)
+    if not salt:
+        raise PermissionError(
+            f"{split} banks are built only by the held-out CI workflow, which holds "
+            f"{SALT_VARIABLE}. Grade development locally and request held-out looks "
+            "through .github/workflows/heldout.yml."
+        )
+    return salt
+
+
+def task_seed(salt, dataset, seed):
+    """Public seed for development. A secret-keyed derivation for held-out banks.
+
+    ADBench labels are public. With a public seed anyone could rebuild the held-out
+    rows and their labels from the pinned files. Keying the row sample and the
+    detector seeds on the CI secret leaves the dataset known but its graded rows
+    unknown.
+    """
+    if salt is None:
+        return seed
+    message = f"{dataset}:{seed}".encode()
+    return int.from_bytes(hmac.digest(salt.encode(), message, "sha256")[:4], "big")
 
 
 def portfolio(seed):
@@ -206,6 +238,7 @@ def prepare(args):
         or any(s < 0 for s in args.seeds)
     ):
         raise ValueError("Use at least 80 samples and distinct non-negative seeds")
+    salt = grading_salt(args.split)
     with new_directory(args.out) as result:
         public, private = result / "public", result / "private"
         public.mkdir()
@@ -217,6 +250,7 @@ def prepare(args):
             "revision": REVISION,
             "max_samples": args.max_samples,
             "seeds": args.seeds,
+            "salted": salt is not None,
             "extra_views": args.extra_views,
             "candidates": names,
             "families": [name.split("/")[0] for name in names],
@@ -246,12 +280,13 @@ def prepare(args):
                     f"Invalid feature matrix or binary labels in {path.name}"
                 )
             for seed in args.seeds:
-                indices = np.random.default_rng(seed).permutation(len(raw))[
+                derived = task_seed(salt, row["dataset"], seed)
+                indices = np.random.default_rng(derived).permutation(len(raw))[
                     : args.max_samples
                 ]
                 batch, y = np.asarray(raw[indices], dtype=float), labels[indices]
                 arrays, test_labels, test_scores = build_task(
-                    batch, y, seed, args.extra_views
+                    batch, y, derived, args.extra_views
                 )
                 if any(
                     not np.isfinite(v).all() for v in (*arrays.values(), test_scores)

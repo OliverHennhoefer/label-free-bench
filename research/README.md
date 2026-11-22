@@ -9,6 +9,7 @@ This file is the index. Read it first and load entries only when you need them. 
 | Path | Holds | Written by | Limit |
 | --- | --- | --- | --- |
 | `ledger.jsonl` | One row per grade: run ID, split, bank, commits, selector hashes, results | The grader only | Append-only |
+| `looks/` | Disclosed held-out reports and encrypted private test details, by run ID | The held-out CI workflow only | Append-only |
 | `claims/C-NNN.md` | One atomic claim, its scope, status and ledger evidence | Verifier, gardener | 150 words |
 | `negative.md` | One row per dead end: mechanism tested, scope, why it failed, when to reopen | Verifier, gardener | 60 words a row |
 | `experiments/<slug>/` | `prediction.md` (committed before grading), `result.md`, selector code | Researcher | 250 and 350 words |

@@ -61,6 +61,42 @@ The [example selector](example_selector.py) reproduces the library's model-centr
 - **Disclosure by split.** Development reports are complete, including per-task picks and supervised winners. Validation reports give aggregates rounded to two decimals. Test reports give only a promote-or-hold decision per selector against the reference: a one-sided exact sign test over source groups at α = 0.05. The 14 test files form 10 source groups, so promotion needs at least 9 sources to improve when none ties. Reserve test for one or two finalists. Validation and test looks require `--prediction`, a file committed to git and unchanged since, whose commit the ledger records.
 - **Reproducibility.** Inputs are checked against their pinned hashes. The public manifest records the environment versions, the `labelfree` version, commit and source hash, seeds, protocol and task-file hashes. Submissions contain source fingerprints, a custom selector's source snapshot, per-task ranks, status and timing. Reports include submission and grader fingerprints. Store the bank, inputs, environment and submissions used for a publication.
 
+## Held-out looks in CI
+
+Development runs locally and costs nothing. Validation and test looks run only in the [held-out workflow](../.github/workflows/heldout.yml), so the grading key never exists where agents work.
+
+**Why a secret.** ADBench labels are public, and the manifest says which datasets are held out. With public seeds anyone could rebuild the held-out rows and labels from the pinned files. The workflow keys each task's row sample and detector seeds on `LABFREE_GRADING_SALT`, an HMAC secret held in the repository's `grading` environment. The dataset is known, but the graded rows are not. Held-out banks always use seeds 0, 1 and 2, so a look cannot be repeated with fresh seeds.
+
+**One look.** Someone dispatches the workflow on `main` with the split, the selector paths, the committed prediction, the target, the reference and whether to build extra views. The job:
+
+1. Refuses the request unless every selector is a committed `.py` under `research/experiments/`, the prediction is committed and names each selector path, and, for test, there are at most two finalists that have never had a test look. It also verifies the signature of every held-out ledger row.
+2. Builds the held-out bank with the secret, then removes the secret from its environment and the grading key from disk.
+3. Runs each selector as an unprivileged `candidate` user in a network namespace without network. That user cannot read the grader's environment or the key, and cannot write the checkout or the Python installation.
+4. Grades, signs the ledger row with the secret, and records the CI run URL. It pushes the row and the disclosed report (`research/looks/<run>-report.json`) to `main`. For test it also commits the private win counts, encrypted with the secret, as `research/looks/<run>-private.json.enc`.
+
+The job prints only what the split discloses, so its public logs reveal no more than the committed report. `check-memory` rejects a held-out ledger row without a CI run and signature, and every look re-verifies all signatures, so a hand-written or edited row is caught.
+
+**Request a look** from the Actions tab, or with the GitHub CLI:
+
+```sh
+gh workflow run heldout.yml -f split=validation \
+  -f selectors="research/experiments/<slug>/selector.py" \
+  -f prediction=research/experiments/<slug>/prediction.md \
+  -f target=ap -f reference=iforest_default
+git pull  # the ledger row arrives on main
+```
+
+**Cost.** The workflow runs only on an explicit dispatch, with no matrix and no schedule. It caches pip and the public raw files, never the bank or the key. Standard runners are free for public repositories. A look takes a few minutes, mostly installing dependencies and fitting the 8-candidate pool.
+
+**One-time setup** (repository admin):
+
+1. Create the environment **Settings → Environments → New environment** named `grading`. Under deployment branches choose *Selected branches* and add `main` only. Optionally add yourself as a required reviewer, so every look needs your click.
+2. Add the environment secret `LABFREE_GRADING_SALT`, for example the output of `python -c "import secrets; print(secrets.token_hex(32))"`. Keep a copy offline to decrypt private test files: `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:LABFREE_GRADING_SALT -in <file>.enc`. Changing it creates new held-out banks.
+3. Protect `main` so that changes, including to this workflow, arrive by reviewed pull request. If the protection blocks direct pushes, allow GitHub Actions to bypass it or the ledger push fails.
+4. Under **Settings → Actions → General**, keep *Require approval for fork pull request workflows* on. Forks never receive environment secrets, and the workflow has no pull-request trigger.
+
+**What remains open.** The held-out dataset names are public. A selector could hard-code choices for recognizable datasets. The screen does not catch that, so a verifier reads the selector code before trusting a held-out result. A provenance-disjoint replication remains the standard for a paper. The same command runs outside GitHub: `python -m benchmarks heldout ... --sandbox <prefix>` on any machine that holds the secret and runs candidates under another account, for example a separate user on a home server. GitHub is the default because the key then never touches a machine that agents use.
+
 ## Reading a report
 
 In a development report, `n_fit` and `n_select` count the normal rows for fitting and selection, and `n` counts the private test rows. Set `--target` to `auroc`, `pr_auc_trapezoid`, `ap`, `f1` or `precision_at_budget`. `ap` remains the command's default. `pr_auc_trapezoid` integrates the precision–recall curve by trapezoids. `ap` uses non-interpolated average precision, which ADBench calls `aucpr`. `precision_at_budget` evaluates the top 5% of test scores. [ADBench grader](https://github.com/Minqi824/ADBench/blob/3dac8221081e190f157d78e93bfa8867f90d0965/adbench/myutils.py) · [AP definition](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html)
@@ -75,7 +111,7 @@ The report averages seeds within datasets, datasets within source groups and sou
 
 ## Giving agents access
 
-The example commands run all roles locally for development. For a blind evaluation, a trusted preparer keeps the raw NPZs and the grading key in grader-only storage, for example under another user account. Give the candidate execution environment a read-only copy of `public`, its method code, a writable submission destination and no network access. An external evaluator can call `grade` and return a report without executing candidate code. The surrounding execution environment supplies filesystem and network isolation.
+The example commands run all roles locally for development. Held-out looks follow [Held-out looks in CI](#held-out-looks-in-ci). For a blind evaluation outside this repository, a trusted preparer keeps the raw NPZs and the grading key in grader-only storage, for example under another user account. Give the candidate execution environment a read-only copy of `public`, its method code, a writable submission destination and no network access. An external evaluator can call `grade` and return a report without executing candidate code. The surrounding execution environment supplies filesystem and network isolation.
 
 Let agents query development reports freely. Freeze a shortlist before returning validation feedback and run the final test once on a frozen revision. The ledger records every look. Repeated aggregate scores can still be used to overfit a held-out split, which is why validation is rounded and test gives decisions only. Public ADBench datasets can also be recognized. Reserve a provenance-disjoint external replication for a paper. [Blum and Hardt on adaptive leaderboards](https://proceedings.mlr.press/v37/blum15.html) · [MLE-bench's submission and grading design](https://github.com/openai/mle-bench)
 

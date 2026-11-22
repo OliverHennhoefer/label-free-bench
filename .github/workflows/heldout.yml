@@ -1,0 +1,117 @@
+name: Held-out look
+
+# One validation or test look per dispatch. Development grading stays local.
+# The grading secret lives in the "grading" environment, which only main may
+# deploy to, so a branch or fork that edits this file cannot read it.
+on:
+  workflow_dispatch:
+    inputs:
+      split:
+        description: validation or test
+        type: choice
+        options: [validation, test]
+        required: true
+      selectors:
+        description: Space-separated selector paths under research/experiments/
+        required: true
+      prediction:
+        description: Committed prediction file that names every selector
+        required: true
+      target:
+        description: Supervised target
+        type: choice
+        options: [ap, auroc, pr_auc_trapezoid, precision_at_budget, f1]
+        default: ap
+      reference:
+        description: Baseline name or a committed selector path
+        default: iforest_default
+      extra_views:
+        description: Build refit and reference-point views
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: heldout-ledger
+  cancel-in-progress: false
+
+jobs:
+  look:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: grading
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # Candidate code runs in this job. Keep the push token out of .git.
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install -r requirements.txt
+      # Raw ADBench files are public and hash-checked. The bank and key are never cached.
+      - uses: actions/cache@v4
+        with:
+          path: .bench-runs/raw
+          key: adbench-${{ hashFiles('benchmarks/adbench.csv') }}
+      - name: Create an unprivileged user for candidate code
+        # Selectors run as this user in a namespace without network. It cannot
+        # read the secret in the grader's environment, write the checkout or the
+        # Python installation, or reach the network.
+        run: |
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin candidate
+          sudo chmod o+x "$HOME" "$(dirname "$GITHUB_WORKSPACE")"
+      - name: Grade
+        env:
+          LABFREE_GRADING_SALT: ${{ secrets.LABFREE_GRADING_SALT }}
+          SPLIT: ${{ inputs.split }}
+          SELECTORS: ${{ inputs.selectors }}
+          PREDICTION: ${{ inputs.prediction }}
+          TARGET: ${{ inputs.target }}
+          REFERENCE: ${{ inputs.reference }}
+          EXTRA_VIEWS: ${{ inputs.extra_views }}
+          CI_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -o pipefail
+          read -ra paths <<< "$SELECTORS"
+          views=()
+          if [ "$EXTRA_VIEWS" = "true" ]; then views=(--extra-views); fi
+          python -m benchmarks heldout --split "$SPLIT" --selectors "${paths[@]}" \
+            --prediction "$PREDICTION" --target "$TARGET" --reference "$REFERENCE" \
+            --ci-run "$CI_RUN" "${views[@]}" \
+            --sandbox "sudo -n unshare --net -- setpriv --reuid=candidate --regid=candidate --clear-groups --" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check the ledger after the look
+        env:
+          LABFREE_GRADING_SALT: ${{ secrets.LABFREE_GRADING_SALT }}
+        run: python -m benchmarks verify-ledger
+      - name: Encrypt private test details
+        if: inputs.split == 'test'
+        env:
+          LABFREE_GRADING_SALT: ${{ secrets.LABFREE_GRADING_SALT }}
+        run: |
+          run=$(tail -n 1 research/ledger.jsonl | python -c "import json,sys; print(json.load(sys.stdin)['run'])")
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:LABFREE_GRADING_SALT \
+            -in .bench-runs/private-look.json -out "research/looks/$run-private.json.enc"
+          rm .bench-runs/private-look.json
+      - name: Commit the ledger row
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run=$(tail -n 1 research/ledger.jsonl | python -c "import json,sys; print(json.load(sys.stdin)['run'])")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research/ledger.jsonl research/looks
+          git commit -m "Record held-out look $run"
+          remote="https://x-access-token:${TOKEN}@github.com/${{ github.repository }}"
+          for attempt in 1 2 3; do
+            git pull --rebase "$remote" main && git push "$remote" HEAD:main && exit 0
+            sleep $((attempt * 5))
+          done
+          exit 1
