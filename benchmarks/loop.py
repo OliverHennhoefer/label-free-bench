@@ -27,7 +27,6 @@ DEFAULTS = {
     "observer_warmup": 5,
     "observer_every_after": 5,
     "max_runner_attempts": 2,
-    "max_iterations": 0,
 }
 
 
@@ -115,7 +114,9 @@ def flags(root: Path) -> list[str]:
     return found
 
 
-def decide(root: Path = Path("research")) -> Assignment:
+def decide(root: Path = Path("research"), stop_after: int = 0) -> Assignment:
+    """Pick this session's role. `stop_after` pauses a run after that many
+    iterations and a final observer report. It belongs to a run, not the loop."""
     cadence = settings(root)
     log = read_jsonl(root / "loop.jsonl")
     ledger = [r for r in read_jsonl(root / "ledger.jsonl") if r["split"] == "dev"]
@@ -127,13 +128,13 @@ def decide(root: Path = Path("research")) -> Assignment:
     ]
     if not any(row["role"] == "setup" for row in log):
         return Assignment("setup", reason="iteration 0 has not run", waiting=waiting)
-    cap, done = cadence["max_iterations"], len(iterations(log))
-    if cap and done >= cap:
+    done = len(iterations(log))
+    if stop_after and done >= stop_after:
         if since(log, "observer"):
-            reason = f"final report after {done} iterations"
+            reason = f"run report after {done} iterations"
             return Assignment("observer", reason=reason, waiting=waiting)
-        reason = f"iteration cap of {cap} reached"
-        return Assignment("halt", reason=reason, waiting=waiting)
+        stop = f"this run stops after {stop_after} iterations; continue without --stop-after"
+        return Assignment("halt", reason="run finished", waiting=[stop, *waiting])
     if problems := check_memory(root):
         return Assignment("gardener", reason=problems[0], waiting=waiting)
     if observer_due(log, cadence):
@@ -208,7 +209,7 @@ def append(root: Path, role, slug, summary, friction, session) -> dict:
 
 
 def next_role(args):
-    print(decide(args.root).render(args.root))
+    print(decide(args.root, args.stop_after).render(args.root))
 
 
 def log_role(args):

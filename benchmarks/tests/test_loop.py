@@ -102,14 +102,14 @@ def test_setup_runs_first(tmp_path):
     assert decide(tmp_path).role == "setup"
 
 
-def test_cap_ends_with_an_observer_report(lab):
+def test_stop_after_ends_a_run_with_an_observer_report(lab):
     (lab / "loop.toml").write_text(
-        "[cadence]\nobserver_every = 0\nobserver_every_after = 0\n"
-        "gardener_every = 0\nmax_iterations = 2\n"
+        "[cadence]\nobserver_every = 0\nobserver_every_after = 0\ngardener_every = 0\n"
     )
     finish(lab, "e1", 1)
-    assert decide(lab).role == "proposer"
+    assert decide(lab, stop_after=2).role == "proposer"
     finish(lab, "e2", 2)
-    assert decide(lab).role == "observer"
+    assert decide(lab, stop_after=2).role == "observer"
     append(lab, "observer", None, "final", None, "o")
-    assert decide(lab).role == "halt"
+    assert decide(lab, stop_after=2).role == "halt"
+    assert decide(lab).role == "proposer"

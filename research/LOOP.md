@@ -12,7 +12,7 @@ Each session plays exactly one role. `python -m benchmarks next` reads the repos
 
 ## Order
 
-`next` picks the first that applies: halt on a flag at the top of `HANDOFF.md` or `Halt: yes` in the latest observer report; setup once, as iteration 0; a final observer report and then halt at `max_iterations`; gardener when `check-memory` fails; observer on its cadence; gardener every `gardener_every` iterations; verifier for a graded experiment; runner for a committed prediction; otherwise proposer. Cadence lives in `loop.toml`.
+`next` picks the first that applies: halt on a flag at the top of `HANDOFF.md` or `Halt: yes` in the latest observer report; setup once, as iteration 0; gardener when `check-memory` fails; observer on its cadence; gardener every `gardener_every` iterations; verifier for a graded experiment; runner for a committed prediction; otherwise proposer. Cadence lives in `loop.toml`. A run can pass `next --stop-after N` to pause after N iterations and an observer report; the loop itself has no cap.
 
 ## Guardrails
 
