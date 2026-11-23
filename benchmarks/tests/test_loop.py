@@ -12,6 +12,7 @@ def lab(tmp_path):
     root = tmp_path / "research"
     (root / "experiments").mkdir(parents=True)
     (root / "ledger.jsonl").write_text("")
+    append(root, "setup", None, "ready", None, "setup-session")
     return root
 
 
@@ -94,3 +95,21 @@ def test_observer_warmup_then_slower(lab):
     assert decide(lab).role == "proposer"
     finish(lab, "e3", 3)
     assert decide(lab).role == "observer"
+
+
+def test_setup_runs_first(tmp_path):
+    (tmp_path / "experiments").mkdir()
+    assert decide(tmp_path).role == "setup"
+
+
+def test_stop_after_ends_a_run_with_an_observer_report(lab):
+    (lab / "loop.toml").write_text(
+        "[cadence]\nobserver_every = 0\nobserver_every_after = 0\ngardener_every = 0\n"
+    )
+    finish(lab, "e1", 1)
+    assert decide(lab, stop_after=2).role == "proposer"
+    finish(lab, "e2", 2)
+    assert decide(lab, stop_after=2).role == "observer"
+    append(lab, "observer", None, "final", None, "o")
+    assert decide(lab, stop_after=2).role == "halt"
+    assert decide(lab).role == "proposer"

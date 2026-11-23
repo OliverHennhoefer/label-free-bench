@@ -124,6 +124,12 @@ def main():
         "next", help="Print the research role that should run in this session"
     )
     upcoming.add_argument("--root", type=Path, default=Path("research"))
+    upcoming.add_argument(
+        "--stop-after",
+        type=int,
+        default=0,
+        help="Pause this run after N iterations and an observer report",
+    )
     log = commands.add_parser("log", help="Record the end of one role session")
     log.add_argument("--root", type=Path, default=Path("research"))
     log.add_argument("--role", required=True)

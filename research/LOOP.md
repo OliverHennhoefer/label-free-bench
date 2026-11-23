@@ -4,15 +4,15 @@ Each session plays exactly one role. `python -m benchmarks next` reads the repos
 
 ## One session
 
-1. `git pull`, and merge `origin/main` if you work on another branch, so held-out ledger rows from CI arrive.
+1. Work on the `lab` branch: `git fetch origin main lab`, check out `lab` (create it from `origin/main` if it does not exist), and merge `origin/main` so held-out ledger rows from CI arrive.
 2. `python -m benchmarks next`. If the role is `halt`, stop and report what it is waiting on.
 3. Follow `research/roles/<role>.md`. How you do the work is up to you.
 4. `python -m benchmarks log --role <role> [--slug <slug>] --summary "..." [--friction "..."]`. Friction is a rule or step that got in the way, for the observer.
-5. Overwrite `HANDOFF.md`, unless you are the verifier or observer. Commit and push.
+5. Overwrite `HANDOFF.md`, unless you are the verifier or observer. Commit and push to `lab`. A human merges `lab` into `main`, which a held-out look needs first.
 
 ## Order
 
-`next` picks the first that applies: halt on a flag at the top of `HANDOFF.md` or `Halt: yes` in the latest observer report; gardener when `check-memory` fails; observer on its cadence; gardener every `gardener_every` iterations; verifier for a graded experiment; runner for a committed prediction; otherwise proposer. Cadence lives in `loop.toml`.
+`next` picks the first that applies: halt on a flag at the top of `HANDOFF.md` or `Halt: yes` in the latest observer report; setup once, as iteration 0; gardener when `check-memory` fails; observer on its cadence; gardener every `gardener_every` iterations; verifier for a graded experiment; runner for a committed prediction; otherwise proposer. Cadence lives in `loop.toml`. A run can pass `next --stop-after N` to pause after N iterations and an observer report; the loop itself has no cap.
 
 ## Guardrails
 

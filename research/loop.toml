@@ -2,7 +2,7 @@
 # `python -m benchmarks next` reads this file. Change it freely; the observer
 # may suggest values, but only a human edits this file.
 [cadence]
-gardener_every = 10        # iterations between gardening sessions
+gardener_every = 10        # iterations between gardening sessions; 0 = only when check-memory fails
 observer_every = 1         # iterations between observer reports during warm-up
 observer_warmup = 5        # iterations that count as warm-up
 observer_every_after = 5   # after warm-up; 0 turns the observer off

@@ -19,7 +19,7 @@ from pathlib import Path
 from .memory import check as check_memory
 from .protocol import digest
 
-ROLES = ("proposer", "runner", "verifier", "gardener", "observer")
+ROLES = ("setup", "proposer", "runner", "verifier", "gardener", "observer")
 EXPERIMENT_ROLES = ("proposer", "runner", "verifier")
 DEFAULTS = {
     "gardener_every": 10,
@@ -114,7 +114,9 @@ def flags(root: Path) -> list[str]:
     return found
 
 
-def decide(root: Path = Path("research")) -> Assignment:
+def decide(root: Path = Path("research"), stop_after: int = 0) -> Assignment:
+    """Pick this session's role. `stop_after` pauses a run after that many
+    iterations and a final observer report. It belongs to a run, not the loop."""
     cadence = settings(root)
     log = read_jsonl(root / "loop.jsonl")
     ledger = [r for r in read_jsonl(root / "ledger.jsonl") if r["split"] == "dev"]
@@ -124,11 +126,21 @@ def decide(root: Path = Path("research")) -> Assignment:
         f"held-out look requested in {p}"
         for p in sorted((root / "experiments").glob("*/heldout-request.md"))
     ]
+    if not any(row["role"] == "setup" for row in log):
+        return Assignment("setup", reason="iteration 0 has not run", waiting=waiting)
+    done = len(iterations(log))
+    if stop_after and done >= stop_after:
+        if since(log, "observer"):
+            reason = f"run report after {done} iterations"
+            return Assignment("observer", reason=reason, waiting=waiting)
+        stop = f"this run stops after {stop_after} iterations; continue without --stop-after"
+        return Assignment("halt", reason="run finished", waiting=[stop, *waiting])
     if problems := check_memory(root):
         return Assignment("gardener", reason=problems[0], waiting=waiting)
     if observer_due(log, cadence):
         return Assignment("observer", reason="observer cadence", waiting=waiting)
-    if since(log, "gardener") >= cadence["gardener_every"]:
+    garden = cadence["gardener_every"]
+    if garden and since(log, "gardener") >= garden:
         return Assignment(
             "gardener",
             reason=f"{cadence['gardener_every']} iterations since gardening",
@@ -197,7 +209,7 @@ def append(root: Path, role, slug, summary, friction, session) -> dict:
 
 
 def next_role(args):
-    print(decide(args.root).render(args.root))
+    print(decide(args.root, args.stop_after).render(args.root))
 
 
 def log_role(args):

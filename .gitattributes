@@ -1,0 +1,3 @@
+# Append-only logs: merging main into the lab branch keeps both sides' rows.
+research/ledger.jsonl merge=union
+research/loop.jsonl merge=union
