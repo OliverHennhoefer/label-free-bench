@@ -1,14 +1,16 @@
 # Literature queue
 
-Unverified leads for the first review, collected on 2026-11-22. Verify each one, write a note in this folder, and remove it from the queue.
+Unverified leads. Verify each one, write a note in this folder, and remove it from the queue.
 
-- Ma et al. 2023, internal model-selection strategies for outlier detection, a broadly negative result. https://arxiv.org/abs/2104.01422
-- AutoUAD (ICLR 2025): relative top median, expected anomaly gap and NPD. Closest to the normal-only setting.
-- SWSA: model selection with synthetic anomalies built from normal data. https://arxiv.org/abs/2310.10461
-- AUCp (2026): a pseudo-AUC from training normals against unlabeled test data. https://arxiv.org/abs/2606.08742
-- Idan 2024: selection by ensemble consensus. https://arxiv.org/abs/2410.14579
-- MetaEns (ICML 2026): meta-learned unsupervised ensemble selection, with ELECT and MetaOD as baselines.
-- OutFormer (2026): zero-shot tabular anomaly-detection foundation models, which sidestep selection. https://arxiv.org/abs/2602.03018
-- Röchner et al. 2025: a per-feature quantile baseline is competitive on ADBench. https://arxiv.org/abs/2507.15584
-- Goswami et al.: time-series model selection by synthetic anomaly injection. https://arxiv.org/abs/2210.01078
-- Classic: IREOS, Excess-Mass and Mass-Volume curves (Goix), MetaOD, HYPER.
+All leads collected on 2026-11-22 were verified on 2026-11-23 and have notes here. Partial verifications:
+
+- MetaEns: the baseline list (ELECT, MetaOD) could not be confirmed; the full text was rate-limited. Recheck before citing it as a comparison.
+- IREOS: only the abstract is readable; find an open copy for numbers.
+- Idan 2024: the reported correlations come from a partly summarized PDF.
+
+New leads:
+
+- ELECT (Zhao, Zhang, Akoglu, ICDM 2022): meta-learned iterative selection. https://www.andrew.cmu.edu/user/lakoglu/pubs/22-icdm-ELECT.pdf
+- Ma, Zhao, Akoglu 2023 survey of unsupervised model selection, SIGKDD Explorations. https://www.andrew.cmu.edu/user/lakoglu/pubs/23-SigKDDExplor-UnsupervisedModelSelection-WhitePaperSurvey.pdf
+- Rayana and Akoglu, "Less is More: Building Selective Anomaly Ensembles" (SELECT), consensus-based ensemble selection. https://arxiv.org/abs/1501.01924
+- "Friend or Foe? Harnessing Controllable Overfitting for Anomaly Detection", arXiv 2412.00560. Relevant to refit-overfit-gap.
