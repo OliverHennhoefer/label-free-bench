@@ -7,4 +7,4 @@ observer_every = 1         # iterations between observer reports during warm-up
 observer_warmup = 5        # iterations that count as warm-up
 observer_every_after = 5   # after warm-up; 0 turns the observer off
 max_runner_attempts = 2    # runner sessions without a grade before the verifier closes it
-max_iterations = 10        # stop after this many iterations and the observer's final report; 0 = no cap
+max_iterations = 10        # first test run only: stop after 10 iterations and a final observer report. Set 0 for no cap

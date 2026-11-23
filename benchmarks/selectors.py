@@ -49,7 +49,9 @@ def baselines(batch, ireos_rows):
             )
             results[name]["seconds"] = perf_counter() - start
 
-    each("rtm", lf.relative_top_median_score)
+    # RTM needs non-negative scores and is not offset-invariant. Anchor each
+    # candidate's minimum selection score at zero, the same rule for every batch.
+    each("rtm", lambda s: lf.relative_top_median_score(s - s.min()))
     each("eag", lf.expected_anomaly_gap_score)
     each("asi", lambda s: lf.asi_score(X, s, contamination=TAIL))
     each("asoi", lambda s: lf.asoi_score(X, s, contamination=TAIL))
