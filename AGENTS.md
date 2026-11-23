@@ -1,6 +1,6 @@
 # Lab rules
 
-The question: with only known-normal data, how close can a selector come to the detector a labeled evaluation would choose for a named target? Start every session with `research/README.md`, then `research/HANDOFF.md`.
+The question: with only known-normal data, how close can a selector come to the detector a labeled evaluation would choose for a named target? Start every session with `python -m benchmarks next --claim` (see `research/LOOP.md`), then read what your role needs.
 
 ## Commands
 
@@ -34,7 +34,7 @@ Validation and test looks run only in CI, through the [held-out workflow](.githu
 
 ## Research loop
 
-Each session plays one role, chosen by `python -m benchmarks next`. See `research/LOOP.md` for the session steps and `research/roles/` for each role's contract. Do not read `observer/`.
+Each session plays one role, chosen by `python -m benchmarks next`. See `research/LOOP.md` for the session steps and `research/roles/` for each role's contract. Only the observer reads `observer/`.
 
 1. **Propose.** Write the mechanism and a discriminating prediction from first principles before reading `claims/` or `negative.md`. Then read them and state for each relevant entry whether you adopt or reject it, and why. Search the literature for the mechanism. Commit `prediction.md`.
 2. **Implement and run.** Put the selector in the experiment folder. Grade it against the planned reference on development.

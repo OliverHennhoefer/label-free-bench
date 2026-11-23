@@ -74,6 +74,15 @@ def decisions(records, target):
     }
 
 
+def pick_counts(rows):
+    """How often each candidate was chosen, splitting ties evenly."""
+    counts = defaultdict(float)
+    for row in rows:
+        for name in row["selected"]:
+            counts[name] += 1 / len(row["selected"])
+    return {name: round(n, 2) for name, n in sorted(counts.items())}
+
+
 def rounded(value):
     if isinstance(value, float):
         return round(value, 2)
@@ -298,6 +307,8 @@ def grade(args):
             split,
         )
     if split == "dev":
+        for name, rows in records.items():
+            report["summary"][name]["picks"] = pick_counts(rows)
         report["by_task"] = dict(records)
         report["supervised_winners"] = supervised_winners
         report["single_class_task_ids"] = skipped
@@ -373,6 +384,16 @@ def append_ledger(
                 f"delta_{target}": row[f"delta_{target}"],
                 "ok": row["status_counts"]["ok"],
                 "tasks": row["tasks"],
+                **(
+                    {
+                        "source_wins": row["source_wins"],
+                        "sources": row["sources"],
+                        f"delta_{target}_ci95": row[f"delta_{target}_ci95"],
+                        "picks": row["picks"],
+                    }
+                    if report["split"] == "dev"
+                    else {}
+                ),
             }
             for name, row in report["summary"].items()
         }

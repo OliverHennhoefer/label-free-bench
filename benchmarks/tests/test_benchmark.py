@@ -164,6 +164,13 @@ def test_freeze_grade_and_failures(tmp_path, bank, monkeypatch):
     assert report["summary"][flat]["delta_ap_ci95"] is None
     assert report["by_task"][flat][0]["selected"] == [DEFAULT, "other"]
     assert report["summary"][flat]["ap_best_pick_rate"] == 0.5
+    dev_ledger = tmp_path / "dev-ledger.jsonl"
+    grade(Namespace(**{**vars(args), "out": tmp_path / "dev-2"}, ledger=dev_ledger))
+    (row,) = [json.loads(line) for line in dev_ledger.read_text().splitlines()]
+    assert row["results"][flat]["picks"] == {DEFAULT: 0.5, "other": 0.5}
+    assert (
+        row["results"][flat]["sources"] == 1 and "delta_ap_ci95" in row["results"][flat]
+    )
     with pytest.raises(ValueError, match="Target 'brier' is unavailable"):
         grade(Namespace(**vars(args), target="brier"))
 

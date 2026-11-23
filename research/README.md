@@ -26,7 +26,7 @@ This file is the index. Read it first and load entries only when you need them. 
 ## Rules for entries
 
 - **Numbers come from the ledger.** Cite run IDs. Never copy a number from a summary or from memory.
-- **Claims are atomic and scoped.** One statement, the conditions it covers, status `open`, `supported`, `refuted` or `superseded by C-NNN`.
+- **Claims are atomic and scoped.** One statement, the conditions it covers, status `open`, `supported`, `refuted` or `superseded by C-NNN`. `supported` needs a ledger interval for the planned difference that excludes zero; otherwise the claim stays `open`.
 - **Negative results stay short and specific.** Record the mechanism and scope that failed, not "X does not work", plus what would justify reopening it.
 - **IDs are permanent.** Merge or retire by marking `superseded by` and moving the old file to `archive/` with `git mv`. Never delete evidence.
 - **Literature on demand.** Search when a hypothesis is proposed and again before any novelty claim. Record the query and date in the note.

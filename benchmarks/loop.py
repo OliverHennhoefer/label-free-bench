@@ -27,6 +27,7 @@ DEFAULTS = {
     "observer_warmup": 5,
     "observer_every_after": 5,
     "max_runner_attempts": 2,
+    "claim_hours": 3,
 }
 
 
@@ -41,7 +42,7 @@ class Assignment:
         lines = [f"role: {self.role}"]
         if self.slug:
             lines.append(f"experiment: {root / 'experiments' / self.slug}")
-        if self.role != "halt":
+        if self.role not in ("halt", "wait"):
             lines.append(f"instructions: {root / 'roles' / f'{self.role}.md'}")
         lines.append(f"reason: {self.reason}")
         lines += [f"waiting on a human: {item}" for item in self.waiting]
@@ -126,41 +127,75 @@ def decide(root: Path = Path("research"), stop_after: int = 0) -> Assignment:
         f"held-out look requested in {p}"
         for p in sorted((root / "experiments").glob("*/heldout-request.md"))
     ]
-    if not any(row["role"] == "setup" for row in log):
-        return Assignment("setup", reason="iteration 0 has not run", waiting=waiting)
+    busy = active_claims(root, log, cadence["claim_hours"])
     done = len(iterations(log))
-    if stop_after and done >= stop_after:
-        if since(log, "observer"):
-            reason = f"run report after {done} iterations"
-            return Assignment("observer", reason=reason, waiting=waiting)
+    if stop_after and done >= stop_after and not since(log, "observer"):
         stop = f"this run stops after {stop_after} iterations; continue without --stop-after"
         return Assignment("halt", reason="run finished", waiting=[stop, *waiting])
+    for assignment in candidates(root, log, ledger, cadence, stop_after):
+        if (assignment.role, assignment.slug) not in busy:
+            assignment.waiting = waiting
+            return assignment
+    reason = "every due role is claimed by a session that is still working"
+    return Assignment("wait", reason=reason, waiting=waiting)
+
+
+def candidates(root, log, ledger, cadence, stop_after=0):
+    """Due roles, most urgent first."""
+    if not any(row["role"] == "setup" for row in log):
+        yield Assignment("setup", reason="iteration 0 has not run")
+        return
+    done = len(iterations(log))
+    if stop_after and done >= stop_after:
+        yield Assignment("observer", reason=f"run report after {done} iterations")
+        return
     if problems := check_memory(root):
-        return Assignment("gardener", reason=problems[0], waiting=waiting)
+        yield Assignment("gardener", reason=problems[0])
     if observer_due(log, cadence):
-        return Assignment("observer", reason="observer cadence", waiting=waiting)
+        yield Assignment("observer", reason="observer cadence")
     garden = cadence["gardener_every"]
     if garden and since(log, "gardener") >= garden:
-        return Assignment(
-            "gardener",
-            reason=f"{cadence['gardener_every']} iterations since gardening",
-            waiting=waiting,
-        )
+        yield Assignment("gardener", reason=f"{garden} iterations since gardening")
     open_ = [p for p in experiments(root) if not (p / "result.md").is_file()]
     for folder in open_:
         if graded(folder, ledger):
-            return Assignment("verifier", folder.name, "graded, not verified", waiting)
+            yield Assignment("verifier", folder.name, "graded, not verified")
     for folder in open_:
         attempts = sum(
             row["role"] == "runner" and row.get("slug") == folder.name for row in log
         )
         if attempts >= cadence["max_runner_attempts"]:
             reason = f"{attempts} runner sessions produced no grade"
-            return Assignment("verifier", folder.name, reason, waiting)
+            yield Assignment("verifier", folder.name, reason)
     for folder in open_:
         if not (folder / "heldout-request.md").is_file():
-            return Assignment("runner", folder.name, "prediction committed", waiting)
-    return Assignment("proposer", reason="no experiment awaits a run", waiting=waiting)
+            yield Assignment("runner", folder.name, "prediction committed")
+    yield Assignment("proposer", reason="no experiment awaits a run")
+
+
+def active_claims(root: Path, log: list[dict], hours: float) -> set[tuple]:
+    """Jobs another session claimed recently and has not logged yet."""
+    finished = {row["session"] for row in log}
+    now = datetime.now(UTC)
+    return {
+        (row["role"], row.get("slug"))
+        for row in read_jsonl(root / "loop-claims.jsonl")
+        if row["session"] not in finished
+        and (now - datetime.fromisoformat(row["time"])).total_seconds() < hours * 3600
+    }
+
+
+def claim(root: Path, assignment: Assignment, session: str | None) -> None:
+    if not session:
+        raise ValueError("No session ID. Set LAB_SESSION.")
+    row = {
+        "time": datetime.now(UTC).isoformat(timespec="seconds"),
+        "role": assignment.role,
+        "slug": assignment.slug,
+        "session": session,
+    }
+    with (root / "loop-claims.jsonl").open("a") as stream:
+        stream.write(json.dumps(row) + "\n")
 
 
 def session_id() -> str | None:
@@ -209,7 +244,10 @@ def append(root: Path, role, slug, summary, friction, session) -> dict:
 
 
 def next_role(args):
-    print(decide(args.root, args.stop_after).render(args.root))
+    assignment = decide(args.root, args.stop_after)
+    if args.claim and assignment.role not in ("halt", "wait"):
+        claim(args.root, assignment, session_id())
+    print(assignment.render(args.root))
 
 
 def log_role(args):
