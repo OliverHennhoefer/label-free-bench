@@ -43,7 +43,7 @@ Protocol questions, not hypotheses. Each changes the frozen protocol, so adoptin
 
 ## Claims
 
-None yet.
+- [C-001](claims/C-001.md): cross-family top-5% consensus beats mc on development AP (+0.030, 13/20 sources), interval touches zero; supported, dev only.
 
 ## Data exposure
 
