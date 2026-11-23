@@ -130,6 +130,11 @@ def main():
         default=0,
         help="Pause this run after N iterations and an observer report",
     )
+    upcoming.add_argument(
+        "--claim",
+        action="store_true",
+        help="Record this session's claim on the role so others skip it",
+    )
     log = commands.add_parser("log", help="Record the end of one role session")
     log.add_argument("--root", type=Path, default=Path("research"))
     log.add_argument("--role", required=True)

@@ -113,3 +113,20 @@ def test_stop_after_ends_a_run_with_an_observer_report(lab):
     append(lab, "observer", None, "final", None, "o")
     assert decide(lab, stop_after=2).role == "halt"
     assert decide(lab).role == "proposer"
+
+
+def test_claims_keep_sessions_off_each_others_jobs(lab):
+    from benchmarks.loop import claim
+
+    experiment(lab, "e1")
+    experiment(lab, "e2")
+    first = decide(lab)
+    assert (first.role, first.slug) == ("runner", "e1")
+    claim(lab, first, "a")
+    assert (decide(lab).role, decide(lab).slug) == ("runner", "e2")
+    claim(lab, decide(lab), "b")
+    assert decide(lab).role == "proposer"
+    claim(lab, decide(lab), "c")
+    assert decide(lab).role == "wait"
+    append(lab, "runner", "e1", "done", None, "a")
+    assert (decide(lab).role, decide(lab).slug) == ("runner", "e1")

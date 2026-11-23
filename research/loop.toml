@@ -7,3 +7,4 @@ observer_every = 1         # iterations between observer reports during warm-up
 observer_warmup = 5        # iterations that count as warm-up
 observer_every_after = 5   # after warm-up; 0 turns the observer off
 max_runner_attempts = 2    # runner sessions without a grade before the verifier closes it
+claim_hours = 3            # a claimed job stays reserved this long, or until its session logs
